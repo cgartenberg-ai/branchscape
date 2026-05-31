@@ -1,0 +1,36 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>THE COUNCIL — BRANCHSCAPE Act 2</title>
+<link rel="stylesheet" href="vendor/fonts.css">
+<link rel="stylesheet" href="vendor/maplibre-gl.css">
+<script src="vendor/deck.gl.min.js"></script>
+<script src="vendor/maplibre-gl.js"></script>
+<script src="data/branches.js"></script>
+<script src="data/income.js"></script>
+<script src="data/cra_tract.js"></script>
+<script src="data/tracts.js"></script>
+<style>
+  html,body{margin:0;height:100%;background:#02040a;color:#dfe8f5;font-family:'Inter',-apple-system,'Segoe UI',sans-serif;overflow:hidden}
+  #map{position:fixed;inset:0}
+  #hud{position:fixed;inset:0;pointer-events:none}
+  .maplibregl-ctrl-attrib{display:none}
+</style>
+</head>
+<body>
+  <div id="map"></div>
+  <div id="hud"></div>
+  <script src="council/agents.js"></script>
+  <script src="council/engine.js"></script>
+  <script src="council/mandate.js"></script>
+  <script src="council/script.js"></script>
+  <script src="council/map.js"></script>
+  <script src="council/ui.js"></script>
+  <script src="council/director.js"></script>
+  <script>
+    CouncilMap.initMap();
+    // Director.start() wired in Task 11; map-only smoke test for now.
+  </script>
+</body>
+</html>
