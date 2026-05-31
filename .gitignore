@@ -4,6 +4,8 @@ council/.last-test-result
 __pycache__/
 *.pyc
 runs/*.jsonl
+runs/*-transcript.md
+runs/*-report.md
 !runs/golden.jsonl
 # NEVER commit the API key — .env holds ANTHROPIC_API_KEY locally
 .env

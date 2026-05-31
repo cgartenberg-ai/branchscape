@@ -131,5 +131,19 @@ const CouncilUI = (function () {
     setTimeout(() => chip.remove(), 4000);
   }
 
-  return { mount, setPhase, setActiveSpeaker, setReactions, setConfidence, showChips, attackBeam, showToolChip, clearTransient };
+  // Download panel for the post-run artifacts (full transcript + AI decision memo).
+  function showArtifacts(urls) {
+    const old = document.getElementById('c-artifacts'); if (old) old.remove();
+    const bar = el('div'); bar.id = 'c-artifacts';
+    bar.style.cssText = 'position:absolute;top:96px;right:28px;width:214px;display:flex;flex-direction:column;gap:7px;pointer-events:auto;z-index:5';
+    const link = (href, label, icon) =>
+      `<a href="${href}" download target="_blank" style="display:block;text-decoration:none;font-size:12px;color:#cfe0f5;background:linear-gradient(90deg,rgba(20,40,66,.95),rgba(28,52,84,.95));border:1px solid #2a5a8c;border-radius:8px;padding:8px 11px;box-shadow:0 0 12px rgba(40,120,200,.25)">${icon} ${label}</a>`;
+    bar.innerHTML =
+      '<div style="font-size:10px;letter-spacing:2px;color:#6b819c;text-transform:uppercase">Council record</div>' +
+      ((urls && urls.report) ? link(urls.report, 'Decision memo', '📄') : '') +
+      ((urls && urls.transcript) ? link(urls.transcript, 'Full transcript', '📝') : '');
+    hud.appendChild(bar);
+  }
+
+  return { mount, setPhase, setActiveSpeaker, setReactions, setConfidence, showChips, attackBeam, showToolChip, showArtifacts, clearTransient };
 })();

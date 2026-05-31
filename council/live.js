@@ -49,6 +49,7 @@
       case 'vote_cast': s.votes = s.votes.concat([Object.assign({ agent: evt.agent }, evt.data)]); break;
       case 'verdict': s.verdict = evt.data; break;
       case 'error': s.lastError = { agent: evt.agent, message: (evt.data && evt.data.message) || 'error' }; break;
+      case 'artifacts': s.artifacts = evt.data; break;
       case 'run_end': s.done = true; break;
       default: break;
     }
@@ -98,6 +99,8 @@
       CouncilUI.setActiveSpeaker(evt.agent || 'chair', '⚠ ' + ((evt.data && evt.data.message) || 'error'));
     }
     if (evt.type === 'run_end' && !state.verdict) CouncilUI.setPhase('DONE');
+    if (evt.type === 'artifacts' && typeof CouncilUI.showArtifacts === 'function')
+      CouncilUI.showArtifacts(evt.data);
   }
 
   const api = { initialState, applyEvent, verdictText, connect };

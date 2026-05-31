@@ -5,7 +5,7 @@ from council_server.llm import ClaudeClient
 from council_server.fake_llm import FakeClaude
 from council_server.orchestrator import Orchestrator
 from council_server.record import Recorder
-from council_server import envfile
+from council_server import envfile, reporter
 
 RUNS_DIR = os.path.join(os.path.dirname(__file__), "..", "runs")
 ENV_PATH = os.path.join(os.path.dirname(__file__), "..", ".env")
@@ -24,20 +24,34 @@ def _build_fake_client():
     return FakeClaude(scripted=scripted)
 
 def make_runner(hub, dataset):
-    """A full 6-agent orchestrated deliberation, streamed to the hub and recorded."""
+    """A full 6-agent orchestrated deliberation, streamed to the hub + recorded, then
+    summarized into <stem>-transcript.md + an AI decision memo <stem>-report.md."""
     use_fake = os.environ.get("COUNCIL_FAKE") == "1"
     def runner(mandate):
         os.makedirs(RUNS_DIR, exist_ok=True)
-        rec = Recorder(os.path.join(RUNS_DIR, f"run-{int(time.time())}.jsonl"))
+        stem = f"run-{int(time.time())}"
+        rec = Recorder(os.path.join(RUNS_DIR, f"{stem}.jsonl"))
+        events = []
         def emit(evt):
-            rec.write(hub.publish(evt))  # hub stamps ts + defaults; recorder persists that same dict
+            stamped = hub.publish(evt)  # hub stamps ts + defaults
+            rec.write(stamped)          # persist to JSONL
+            events.append(stamped)      # accumulate for the artifacts
         client = _build_fake_client() if use_fake else ClaudeClient()
         try:
             Orchestrator(dataset, client, emit).run(mandate)
         except Exception as e:
-            hub.publish({"type": "error", "data": {"message": str(e)}})
+            emit({"type": "error", "data": {"message": str(e)}})
+            emit({"type": "run_end", "data": {}})
         finally:
             rec.close()
+        # Write the transcript + AI decision memo, then tell the browser where they are.
+        try:
+            report_client = (FakeClaude([{"text": "# Decision Memo\n(stub memo — fake mode)",
+                                          "tool_calls": []}]) if use_fake else ClaudeClient())
+            urls = reporter.write_artifacts(events, RUNS_DIR, stem, report_client)
+            hub.publish({"type": "artifacts", "data": urls})
+        except Exception as e:
+            hub.publish({"type": "error", "data": {"message": f"report generation failed: {e}"}})
     return runner
 
 def _check_key():
