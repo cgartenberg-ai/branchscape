@@ -1,4 +1,6 @@
 // branchscape/council/engine.js
+// Deterministic decision engine for THE COUNCIL. Pure functions, dual-mode
+// (module.exports in Node, window.CouncilEngine in the browser). No DOM, no network.
 (function (global) {
   const EARTH_KM = 6371;
   const rad = d => d * Math.PI / 180;
@@ -9,6 +11,10 @@
     return 2 * EARTH_KM * Math.asin(Math.min(1, Math.sqrt(s)));
   }
   const num = v => (typeof v === 'number' && isFinite(v)) ? v : 0;
+  function median(values) {
+    const s = [...values].sort((a, b) => a - b);
+    return s.length ? s[Math.floor(s.length / 2)] : 0;
+  }
 
   // data = { tracts:{geoid:[lon,lat]}, branches:[{lat,lon,dep:{year}}],
   //          craTract:{tracts:{geoid:{amt,n}}}, income:[{lat,lon,income}] }
@@ -27,6 +33,7 @@
           capturedBase += num(b.dep && b.dep[baseYear]);
         }
       }
+      // nearest income point (ZIP AGI proxy for demand/spending power)
       let income = 0, best = Infinity;
       for (const p of data.income) {
         const d = haversineKm(lat, lon, p.lat, p.lon);
@@ -39,18 +46,27 @@
     return zones;
   }
 
-  // Derived signals. depositGap & communityNeed grounded; growth & cost modeled.
+  // Derived signals. depositGap & communityNeed are grounded in real data; growth
+  // & cost are modeled proxies (flagged in `modeled`).
+  //
+  // depositGap = DEMAND (income) x UNDER-CAPTURE. Under-capture is a bounded ratio
+  // (1 for a zone with no nearby deposits, →0 as deposits grow), so depositGap rises
+  // with spending power AND with how little of it local branches capture. Crucially it
+  // rises with income, while communityNeed rises as income FALLS — so a deposit-growth
+  // mandate and a community-access mandate pull toward different zones (the demo's
+  // profit-vs-mission tension), instead of one outlier maxing every axis.
   function deriveSignals(zones, opts = {}) {
-    const k = 1; // smoothing for ratios (deposits in $k)
-    const incomes = zones.map(z => z.income).sort((a, b) => a - b);
-    const medianIncome = incomes[Math.floor(incomes.length / 2)] || 0;
+    const k = 1; // smoothing for ratios
+    const medianIncome = median(zones.map(z => z.income));
+    const capDep = median(zones.map(z => z.capturedDeposits).filter(d => d > 0)) || 1;
     return zones.map(z => {
-      const depositGap = z.income / (z.capturedDeposits + k);
+      const underCapture = 1 - z.capturedDeposits / (z.capturedDeposits + capDep); // 1..~0
+      const depositGap = z.income * underCapture;
       const growth = z.capturedDeposits / (z.capturedBase + k);
       const incomeNeed = medianIncome > 0 ? Math.max(0, (medianIncome - z.income) / medianIncome) : 0;
       const craNeed = 1 / (z.craAmt + k);
       const communityNeed = 0.5 * incomeNeed + 0.5 * craNeed;
-      const cost = z.income;
+      const cost = z.income; // modeled: higher-income areas cost more to enter
       return Object.assign({}, z, {
         depositGap, growth, communityNeed,
         saturation: z.saturation, cost,
@@ -80,6 +96,7 @@
   }
 
   const DEFAULT_WEIGHTS = { depositGap: 1, growth: 1, communityNeed: 1, saturation: 1, cost: 0.5 };
+  // Positive signals add; saturation & cost subtract (negatives).
   function scoreZone(z, weights) {
     const w = Object.assign({}, DEFAULT_WEIGHTS, weights);
     const n = z.norm;
@@ -97,7 +114,7 @@
   function agentSatisfied(zone, agent) {
     if (agent.threshold === null) return null;
     const v = zone.norm[agent.signal];
-    const eff = agent.invert ? (1 - v) : v;
+    const eff = agent.invert ? (1 - v) : v; // inverted: low saturation/cost is "good"
     if (eff >= agent.threshold) return 'yes';
     if (eff >= agent.threshold - 0.2) return 'conditional';
     return 'no';
@@ -107,19 +124,28 @@
       .filter(a => a.threshold !== null)
       .map(a => ({ id: a.id, vote: agentSatisfied(frontRunner, a) }));
   }
+  // Confidence = how much the front-runner stands out from the field (#1 vs #2,
+  // scaled by the score RANGE so it's stable), plus agent agreement. Because the
+  // margin is measured against the field range, penalizing the front-runner's score
+  // (the Devil's challenge) always shrinks the gap → confidence drops monotonically,
+  // and a challenge that flips the order leaves two bunched leaders → low confidence.
   function computeConfidence(ranked, agents) {
     if (!ranked.length) return 0;
     const top = ranked[0];
-    const margin = ranked.length > 1
-      ? Math.max(0, Math.min(1, (top.score - ranked[1].score)))
-      : 0.5;
+    let margin = 0.5;
+    if (ranked.length > 1) {
+      const hi = ranked[0].score, lo = ranked[ranked.length - 1].score;
+      const range = (hi - lo) || 1;
+      margin = Math.max(0, Math.min(1, (top.score - ranked[1].score) / range));
+    }
     const votes = computeVotes(top, agents);
     const yes = votes.filter(v => v.vote === 'yes').length;
     const agreement = votes.length ? yes / votes.length : 0;
     const pct = 45 + 35 * margin + 20 * agreement;
     return Math.round(Math.max(0, Math.min(100, pct)));
   }
-
+  // The Devil targets the front-runner's weakest real dimension (lowest positive
+  // signal, or highest negative like saturation/cost) and returns a grounded penalty.
   function devilsChallenge(ranked, weights) {
     const top = ranked[0];
     const n = top.norm;
@@ -134,18 +160,20 @@
     const worst = candidates[0];
     return { targetGeoid: top.geoid, dimension: worst.dimension, penalty: 0.3 + 0.5 * worst.bad };
   }
+  // Re-score with the challenged dimension penalized on the front-runner, then re-rank.
   function applyChallenge(ranked, challenge) {
     return ranked
-      .map(z => {
-        if (z.geoid !== challenge.targetGeoid) return Object.assign({}, z);
-        return Object.assign({}, z, { score: z.score - challenge.penalty });
-      })
+      .map(z => z.geoid === challenge.targetGeoid
+        ? Object.assign({}, z, { score: z.score - challenge.penalty })
+        : Object.assign({}, z))
       .sort((a, b) => b.score - a.score);
   }
 
-  const Engine = { haversineKm, buildZones, deriveSignals, normalizeZones,
+  const Engine = {
+    haversineKm, median, buildZones, deriveSignals, normalizeZones,
     rankZones, scoreZone, computeVotes, computeConfidence, DEFAULT_WEIGHTS,
-    devilsChallenge, applyChallenge };
+    devilsChallenge, applyChallenge,
+  };
   if (typeof module !== 'undefined' && module.exports) module.exports = Engine;
   else global.CouncilEngine = Engine;
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -1,19 +1,22 @@
 // branchscape/council/map.js  (browser-only)
-// Uses the proven index.html renderer: a maplibre-gl map with an interleaved
-// deck.gl MapboxOverlay. Online = CARTO dark basemap; offline (?offline) = an
-// inline no-network "void" style (zero tile requests). The vendored deck.gl
-// bundle ships MapboxOverlay + layers but NOT a standalone DeckGL/Deck class,
-// so everything renders through the maplibre overlay in both modes. If the
-// online basemap fails to load (venue wifi), we auto-fall back to the void.
-const CENTER = { longitude: -112.07, latitude: 33.45, zoom: 9.2, pitch: 55, bearing: -17 };
-const OFFLINE = new URLSearchParams(location.search).has('offline');
-const VOID_STYLE = {
-  version: 8, sources: {},
-  layers: [{ id: 'bg', type: 'background', paint: { 'background-color': '#02040a' } }],
-};
-const ONLINE_STYLE = 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json';
-
+// Renders the council map exactly like the proven index.html: a maplibre-gl map
+// with an interleaved deck.gl MapboxOverlay. Online = CARTO dark basemap; offline
+// (?offline) = an inline no-network "void" style (zero tile requests); online also
+// auto-falls back to the void after 5s if the basemap can't load (venue wifi).
+//
+// IMPORTANT: everything lives INSIDE the IIFE. The only global this file creates is
+// `CouncilMap`. (An earlier version declared `const CENTER`/`OFFLINE` at top level,
+// which collided with an existing global `CENTER` → SyntaxError that aborted page
+// boot before the HUD/director ran. Keep all module state encapsulated here.)
 const CouncilMap = (function () {
+  const CENTER = { longitude: -112.07, latitude: 33.45, zoom: 9.2, pitch: 55, bearing: -17 };
+  const OFFLINE = new URLSearchParams(location.search).has('offline');
+  const VOID_STYLE = {
+    version: 8, sources: {},
+    layers: [{ id: 'bg', type: 'background', paint: { 'background-color': '#02040a' } }],
+  };
+  const ONLINE_STYLE = 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json';
+
   let map, deckOverlay, ready = false;
   const BR = window.BRANCH_DATA.branches;
   const depOf = b => (b.dep && (b.dep['2024'] || 0)) || 0;
@@ -51,7 +54,7 @@ const CouncilMap = (function () {
       getLineColor: [255, 216, 107], lineWidthUnits: 'pixels', getLineWidth: 2,
     });
   }
-  function layers() {
+  function buildLayers() {
     return [
       towerLayer(),
       heatLayer('gap', 'depositGap', [127, 211, 255]),
@@ -62,10 +65,10 @@ const CouncilMap = (function () {
   }
   function render() {
     if (!ready) return;
-    if (!deckOverlay) { deckOverlay = new deck.MapboxOverlay({ interleaved: true, layers: layers() }); map.addControl(deckOverlay); }
-    else deckOverlay.setProps({ layers: layers() });
+    if (!deckOverlay) { deckOverlay = new deck.MapboxOverlay({ interleaved: true, layers: buildLayers() }); map.addControl(deckOverlay); }
+    else deckOverlay.setProps({ layers: buildLayers() });
   }
-  function markReady() { if (!ready) { ready = true; } render(); }
+  function markReady() { if (!ready) ready = true; render(); }
   function initMap() {
     map = new maplibregl.Map({
       container: 'map',
@@ -76,8 +79,6 @@ const CouncilMap = (function () {
     });
     map.on('load', markReady);
     map.on('error', () => { /* tile/style errors → handled by the fallback below */ });
-    // Venue-wifi safety: if the online basemap hasn't loaded in 5s, swap to the
-    // void (which loads instantly, with no network) and render onto it.
     if (!OFFLINE) setTimeout(() => {
       if (!ready) { try { map.setStyle(VOID_STYLE); map.once('styledata', markReady); } catch (_) { markReady(); } }
     }, 5000);
