@@ -27,12 +27,20 @@ function runCouncilChecks() {
   const conf = E.computeConfidence(balanced, A);
   checks.push(['confidence within 0..100', conf >= 0 && conf <= 100]);
 
-  const community = E.rankZones(zones, M.parseMandate('prioritize underbanked communities over deposit growth').weights);
-  checks.push(['community mandate changes the front-runner', balanced[0].geoid !== community[0].geoid]);
+  // Contrasting mandates must pick different winners. Use phrases with DISJOINT
+  // keywords (the old pair both said "deposit growth" AND "community" -> same weights).
+  const profit = E.rankZones(zones, M.parseMandate('maximize deposit growth and profit in the wealthiest markets').weights);
+  const mission = E.rankZones(zones, M.parseMandate('prioritize underbanked low-income communities and CRA access').weights);
+  checks.push(['contrasting mandates pick different winners', profit[0].geoid !== mission[0].geoid]);
 
-  const ch = E.devilsChallenge(balanced, M.parseMandate('balance deposit growth with community access').weights);
-  const after = E.computeConfidence(E.applyChallenge(balanced, ch), A);
-  checks.push(['devil\'s challenge lowers post-challenge confidence', after <= conf]);
+  // The Devil's challenge must lower confidence OF THE NAMED RECOMMENDATION (anchored
+  // to one geoid), not of whatever ends up at #1 after the penalty.
+  const rec = balanced[0].geoid;
+  const wch = M.parseMandate('balance deposit growth with community access').weights;
+  const ch = E.devilsChallenge(balanced, wch);
+  const cBefore = E.confidenceOfPick(balanced, rec, A);
+  const cAfter = E.confidenceOfPick(E.applyChallenge(balanced, ch), rec, A);
+  checks.push(['devil\'s challenge lowers the recommendation\'s confidence', cAfter < cBefore]);
 
   const pass = checks.every(c => c[1]);
   return { pass, results: checks.map(c => ({ name: c[0], ok: c[1] })) };

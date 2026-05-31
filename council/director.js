@@ -24,8 +24,12 @@ const Director = (function () {
     const zones = E.normalizeZones(E.deriveSignals(E.buildZones(data())));
     ranked = E.rankZones(zones, mandate.weights);
     challenge = E.devilsChallenge(ranked, mandate.weights);
-    confBefore = E.computeConfidence(ranked, window.COUNCIL_AGENTS);
-    confAfter = E.computeConfidence(E.applyChallenge(ranked, challenge), window.COUNCIL_AGENTS);
+    // Confidence is anchored to the council's NAMED recommendation (ranked[0]) so the
+    // Devil's challenge always lowers it — the meter's "▼" stays honest even if the
+    // penalty would reorder the field. (The pick itself only changes on an audience redirect.)
+    const recGeoid = ranked[0].geoid;
+    confBefore = E.confidenceOfPick(ranked, recGeoid, window.COUNCIL_AGENTS);
+    confAfter = E.confidenceOfPick(E.applyChallenge(ranked, challenge), recGeoid, window.COUNCIL_AGENTS);
     CouncilMap.setZones(ranked);
     CouncilMap.dropPins(ranked.slice(0, 3));
   }

@@ -24,6 +24,11 @@
     const baseYear = opts.baseYear || '2015';
     const zones = [];
     for (const geoid of Object.keys(data.tracts)) {
+      // Skip Census "special" tracts (9800-9999 = water, parks, airports, other
+      // non-residential). With no residents they get ~zero deposits/CRA and a nearest
+      // high-income ZIP, so they pin every winsorized signal to 1 and dominate the
+      // ranking regardless of mandate. They are not real branch sites.
+      if (parseInt(geoid.slice(-6), 10) >= 980000) continue;
       const [lon, lat] = data.tracts[geoid];
       let saturation = 0, capturedDeposits = 0, capturedBase = 0;
       for (const b of data.branches) {
@@ -171,10 +176,30 @@
         : Object.assign({}, z))
       .sort((a, b) => b.score - a.score);
   }
+  // Confidence of a SPECIFIC pick (the council's named recommendation), measured as
+  // its margin over the best OTHER zone in the field, scaled by the field range, plus
+  // agent agreement. Unlike computeConfidence (which always scores whatever sits at #1),
+  // this is anchored to one geoid — so when the Devil penalizes the recommendation its
+  // margin over rivals shrinks (and can go negative → 0) and the number DROPS honestly,
+  // even if the penalty drops it below a rival. This is what the meter's "▼" reflects.
+  function confidenceOfPick(field, geoid, agents) {
+    const z = field.find(x => x.geoid === geoid);
+    if (!z) return 0;
+    const scores = field.map(x => x.score);
+    const hi = Math.max.apply(null, scores), lo = Math.min.apply(null, scores);
+    const range = (hi - lo) || 1;
+    const bestOther = field.filter(x => x.geoid !== geoid)
+      .reduce((m, x) => Math.max(m, x.score), -Infinity);
+    const margin = Math.max(0, Math.min(1, (z.score - bestOther) / range));
+    const votes = computeVotes(z, agents);
+    const yes = votes.filter(v => v.vote === 'yes').length;
+    const agreement = votes.length ? yes / votes.length : 0;
+    return Math.round(Math.max(0, Math.min(100, 45 + 35 * margin + 20 * agreement)));
+  }
 
   const Engine = {
     haversineKm, median, buildZones, deriveSignals, normalizeZones,
-    rankZones, scoreZone, computeVotes, computeConfidence, DEFAULT_WEIGHTS,
+    rankZones, scoreZone, computeVotes, computeConfidence, confidenceOfPick, DEFAULT_WEIGHTS,
     devilsChallenge, applyChallenge,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = Engine;
