@@ -19,6 +19,14 @@ class ToolsTest(unittest.TestCase):
         self.assertIn("value", out)
         self.assertGreater(out["value"], 0)
 
+    def test_branch_count_is_latest_year_not_all_rows(self):
+        # branches is (branch x 7 snapshot years) ~4071 rows; the count must be the
+        # latest-year branches (~675 for 2024), NOT the full multi-year row count.
+        out = tools.dispatch(self.ds, "query_data", {"metric": "branch_count"})
+        self.assertEqual(out["year"], 2024)
+        self.assertLess(out["value"], 1000)
+        self.assertGreater(out["value"], 400)
+
     def test_query_data_underserved_returns_ranked_tracts(self):
         out = tools.dispatch(self.ds, "query_data", {"metric": "underserved_tracts", "limit": 5})
         self.assertEqual(len(out["rows"]), 5)

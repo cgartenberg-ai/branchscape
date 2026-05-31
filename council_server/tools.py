@@ -69,13 +69,25 @@ def dispatch(ds, name, args):
         return {"zone": args["zone"], "stance": args["stance"], "rationale": args.get("rationale", "")}
     raise KeyError(name)
 
+def _latest_year(ds):
+    # ds.branches is (branch x snapshot-year) rows; each row has an int `dep`
+    # (deposits, $thousands) and a `year`. Use the most recent snapshot.
+    years = [b.get("year") for b in ds.branches if isinstance(b.get("year"), int)]
+    return max(years) if years else 2024
+
+def _num(v):
+    return v if isinstance(v, (int, float)) else 0
+
 def _query_data(ds, args):
     metric = args["metric"]; limit = int(args.get("limit", 5))
     if metric == "total_deposits":
-        total = sum((b["dep"].get("2024", 0) for b in ds.branches))
-        return {"metric": metric, "value": total, "units": "USD thousands"}
+        y = _latest_year(ds)
+        total = sum(_num(b.get("dep")) for b in ds.branches if b.get("year") == y)
+        return {"metric": metric, "year": y, "value": total, "units": "USD thousands"}
     if metric == "branch_count":
-        return {"metric": metric, "value": len(ds.branches)}
+        y = _latest_year(ds)
+        n = sum(1 for b in ds.branches if b.get("year") == y)
+        return {"metric": metric, "year": y, "value": n}
     if metric == "underserved_tracts":
         rows = sorted(_tract_rows(ds), key=lambda r: (r["cra_amt"], r["income"]))[:limit]
         return {"metric": metric, "rows": rows}
