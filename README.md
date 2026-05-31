@@ -110,7 +110,41 @@ To target a **different metro**, edit the bounding box / county FIPS in the fetc
 - Income heat weight is also winsorized ($200k cap) so Paradise Valley's ~$1M-AGI ZIP
   doesn't compress every other neighborhood into one color.
 
+## THE COUNCIL (Act 2) — multi-agent branch-siting demo
+
+Open `council.html` (same server as BRANCHSCAPE). Six AI agents — Chair, Market
+Analyst, Risk Officer, Community/CRA Officer, Real-Estate Scout, and a Devil's
+Advocate — deliberate live over the Maricopa map to decide where to open the next
+branch, in five beats: pose the mandate → gather data → opening positions →
+cross-examination → the vote.
+
+- **Run:** `python3 -m http.server 8000` → open `http://localhost:8000/council.html`
+  (append `?offline` for the zero-network void — recommended for the venue).
+- **Presenter controls:** **Space** play/pause · **→** step one line · **R** replay ·
+  type in the bottom bar and hit **Enter / Redirect** to re-pose the question or steer
+  the council (e.g. "prioritize underbanked communities", "consider a rural town",
+  "weight cost higher"). The room controls the question; the council re-deliberates
+  live and the ranking visibly responds.
+- **What's real vs modeled:** deposit gap, branch saturation, and community/CRA need
+  come from FDIC SOD + FFIEC CRA + IRS income (the same data as Act 1); **growth and
+  cost are modeled proxies** and are flagged as such. The Devil's Advocate attacks the
+  front-runner's genuinely weakest signal, and the confidence meter drops for real.
+- **Architecture:** a deterministic, offline client-side engine (`council/engine.js`)
+  computes the ranking/confidence/votes; the HUD (`council/ui.js`) + director
+  (`council/director.js`) render and choreograph it over the deck.gl map
+  (`council/map.js`); the deliberation wording is the static script
+  (`council/script.js`). Nothing about the decision or visuals needs the network.
+- **Tests:** `./run-tests.sh` (zero dependencies). NOTE: this machine's Node segfaults
+  on teardown, so tests run via `council/_harness.js` and gate on the durable
+  `council/.last-test-result` file, not the exit code — see that file's header.
+- Phase 2 (live agent voices via a local helper) and Phase 3 (analog metros) are
+  separate, later additions.
+
 ## Possible next layers
+- **THE COUNCIL Phase 2:** live agent voices via a tiny local `council_server.py`
+  (`/voice` endpoint, API key server-side only); public build stays static.
+- **THE COUNCIL Phase 3:** pre-load 3–5 analog metros (rerun the fetchers per county
+  FIPS) + place-name labels, so "name your market type" lights up a real comparable.
 - **PMTiles** local basemap extract for offline mode *with* streets/labels.
 - Other metros: rerun the fetchers with a different county FIPS / bbox.
 - Multi-year HMDA/CRA so the lending overlays animate alongside the deposit time-lapse.
