@@ -137,8 +137,34 @@ cross-examination → the vote.
 - **Tests:** `./run-tests.sh` (zero dependencies). NOTE: this machine's Node segfaults
   on teardown, so tests run via `council/_harness.js` and gate on the durable
   `council/.last-test-result` file, not the exit code — see that file's header.
-- Phase 2 (live agent voices via a local helper) and Phase 3 (analog metros) are
-  separate, later additions.
+- The above is **Phase 1 (deterministic demo mode)**. For the real multi-agent version, see
+  **THE COUNCIL: Live** below.
+
+## THE COUNCIL: Live (Phase 2) — real multi-agent
+
+Six **real Claude agents** (Chair, Market Analyst, Risk Officer, Community/CRA Officer,
+Real-Estate Scout, Devil's Advocate) deliberate live over the Maricopa data and emerge a
+branch-siting recommendation — they query the data, argue, and vote; nothing is scripted. A
+small local Python server (`council_server/`, stdlib + the `anthropic` SDK only) holds your
+API key and streams the deliberation to the browser over Server-Sent Events.
+
+- **One-time key setup:** `cp .env.example .env`, then put your key in `.env`
+  (`ANTHROPIC_API_KEY=sk-ant-...`). `.env` is gitignored and never committed.
+- **Run live:** `python3 -m council_server 8099` → open
+  `http://127.0.0.1:8099/council.html?live` (use **127.0.0.1**, not localhost) → in the
+  browser console: `__council.start("<your mandate>")`. (A presenter UI lands in P2d.)
+- **No-key dry run:** `COUNCIL_FAKE=1 python3 -m council_server 8099` (full flow, canned text).
+- **Replay the golden run (offline-safe stage fallback):** start the server and POST
+  `{"action":"replay"}` to `/control` — streams `runs/golden.jsonl` through the same UI.
+- **Tests:** `python3 -m unittest discover -s council_server -p "*_test.py"` (mocked Claude,
+  no key needed) and `./run-tests.sh` for the JS reducer.
+- **Fallback ladder:** live agents → recorded golden-run replay → Phase-1 deterministic
+  `demo` mode (the plain `council.html` path). The public GitHub Pages build is replay-only.
+- **Port note:** the Claude preview/dev tool squats port **8078** over IPv6, which collides
+  with the council server — that's why the default is **8099**. If `?live` shows "connection
+  lost", a stray server is on your port: `pkill -f "http.server"` and restart `council_server`.
+- Phase 2c (agents searching the live web + drawing findings on the map) and 2d (presenter
+  inject / call-the-question / mode toggle / polish) are separate later additions.
 
 ## Possible next layers
 - **THE COUNCIL Phase 2:** live agent voices via a tiny local `council_server.py`
