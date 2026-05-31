@@ -70,8 +70,13 @@
       const depositGap = z.income * underCapture;
       const growth = z.capturedDeposits / (z.capturedBase + k);
       const incomeNeed = medianIncome > 0 ? Math.max(0, (medianIncome - z.income) / medianIncome) : 0;
-      const craNeed = 1 / (z.craAmt + k);
-      const communityNeed = 0.5 * incomeNeed + 0.5 * craNeed;
+      // Graded lending-gap with a soft knee (~$250k), NOT the old 1/(craAmt+1) which
+      // spiked to 1 for EVERY tract with no CRA record — including wealthy ones — so a
+      // rich, no-CRA tract maxed communityNeed AND depositGap at once and no mandate
+      // could separate them (RC2). communityNeed now LEADS with low income, so it
+      // genuinely opposes depositGap (which rises with income) → mandates diverge.
+      const craNeed = 250 / (250 + z.craAmt);
+      const communityNeed = 0.75 * incomeNeed + 0.25 * craNeed;
       const cost = z.income; // modeled: higher-income areas cost more to enter
       return Object.assign({}, z, {
         depositGap, growth, communityNeed,
