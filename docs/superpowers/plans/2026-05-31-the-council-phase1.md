@@ -18,10 +18,12 @@
 
 This is a no-build vanilla-JS project, so testing is split by what is testable:
 
-- **Logic (engine, mandate, agents, script-coverage)** → real unit tests with `node --test`. These modules are written **dual-mode**: they attach to `window` in the browser AND `module.exports` in Node, so the same file is unit-tested in Node and `<script>`-included in the page. This is where TDD applies — write the failing test first.
+- **Logic (engine, mandate, agents, script-coverage)** → real unit tests using the **zero-dependency harness `council/_harness.js`** (NOT `node --test` — on this machine, macOS 26 beta + Node 22, that runner reports spurious failures and segfaults on teardown even when assertions pass). These modules are written **dual-mode**: they attach to `window` in the browser AND `module.exports` in Node, so the same file is unit-tested in Node and `<script>`-included in the page. This is where TDD applies — write the failing test first.
+
+  **Test-file convention:** begin with `const assert = require('node:assert');` and `const { test, report } = require('./_harness.js');`, then the `test('name', () => { ... })` cases, and **end the file with `report();`**. Run with `node council/<name>.test.js` — **exit 0 = pass, exit 1 = fail**. `test(name, fn)` runs `fn` synchronously; `report()` prints `tests N / pass P / fail F` and sets the exit code. (The harness already exists — committed in `a1f4d9e`.)
 - **Visual/interactive (map, ui, director, council.html)** → verified through the **harness preview panel** with concrete, observable expected results (a screenshot showing a specific element, a snapshot containing specific text). These tasks state the exact verification action and what you must observe. There is no DOM unit-test framework; do not invent one.
 
-**Run all unit tests** from `branchscape/`: `node --test council/` (discovers `*.test.js`).
+**Run all unit tests** from `branchscape/`: `for f in council/*.test.js; do echo "== $f =="; node "$f" || exit 1; done` (each file self-reports and exits).
 
 **Preview a page** (used in visual tasks): serve the folder and open the file.
 ```bash
@@ -67,8 +69,8 @@ All new files live under `branchscape/` to keep the folder self-contained and mo
 
 ```javascript
 // branchscape/council/agents.test.js
-const test = require('node:test');
 const assert = require('node:assert');
+const { test, report } = require('./_harness.js');
 const AGENTS = require('./agents.js');
 
 test('roster has the six agents in order', () => {
@@ -98,8 +100,8 @@ test('specialist agents map to real signal keys; invert flags set', () => {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `node --test council/agents.test.js`
-Expected: FAIL — `Cannot find module './agents.js'`.
+Run: `node council/agents.test.js`
+Expected: FAIL — `Cannot find module './agents.js'`. (Remember: end the test file with `report();`.)
 
 - [ ] **Step 3: Write minimal implementation**
 
@@ -121,7 +123,7 @@ Expected: FAIL — `Cannot find module './agents.js'`.
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `node --test council/agents.test.js`
+Run: `node council/agents.test.js`
 Expected: PASS (3 tests).
 
 - [ ] **Step 5: Commit**
@@ -143,8 +145,8 @@ git commit -m "feat(council): agent roster config with unit tests"
 
 ```javascript
 // branchscape/council/engine.test.js
-const test = require('node:test');
 const assert = require('node:assert');
+const { test, report } = require('./_harness.js');
 const E = require('./engine.js');
 
 // tiny deterministic fixture: 3 tracts, a few branches, cra + income
@@ -185,7 +187,7 @@ test('buildZones aggregates branches, cra, income per tract', () => {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `node --test council/engine.test.js`
+Run: `node council/engine.test.js`
 Expected: FAIL — `Cannot find module './engine.js'`.
 
 - [ ] **Step 3: Write minimal implementation**
@@ -241,7 +243,7 @@ Expected: FAIL — `Cannot find module './engine.js'`.
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `node --test council/engine.test.js`
+Run: `node council/engine.test.js`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
@@ -289,7 +291,7 @@ test('normalizeZones maps each signal to 0..1 (winsorized) under z.norm', () => 
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `node --test council/engine.test.js`
+Run: `node council/engine.test.js`
 Expected: FAIL — `E.deriveSignals is not a function`.
 
 - [ ] **Step 3: Implement (add to engine.js before the `Engine` object, then add to the object)**
@@ -347,7 +349,7 @@ Add `deriveSignals, normalizeZones` to the exported `Engine` object:
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `node --test council/engine.test.js`
+Run: `node council/engine.test.js`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
@@ -402,7 +404,7 @@ test('computeVotes yields a yes/conditional/no per specialist agent', () => {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `node --test council/engine.test.js`
+Run: `node council/engine.test.js`
 Expected: FAIL — `E.rankZones is not a function`.
 
 - [ ] **Step 3: Implement (add functions + extend export)**
@@ -459,7 +461,7 @@ Extend export:
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `node --test council/engine.test.js`
+Run: `node council/engine.test.js`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
@@ -502,7 +504,7 @@ test('applyChallenge lowers the front-runner score and confidence', () => {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `node --test council/engine.test.js`
+Run: `node council/engine.test.js`
 Expected: FAIL — `E.devilsChallenge is not a function`.
 
 - [ ] **Step 3: Implement (add + extend export)**
@@ -544,7 +546,7 @@ Extend export:
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `node --test council/engine.test.js`
+Run: `node council/engine.test.js`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
@@ -566,8 +568,8 @@ git commit -m "feat(council): devil's-advocate challenge + re-rank"
 
 ```javascript
 // branchscape/council/mandate.test.js
-const test = require('node:test');
 const assert = require('node:assert');
+const { test, report } = require('./_harness.js');
 const M = require('./mandate.js');
 
 test('default mandate balances deposit growth and community access', () => {
@@ -591,7 +593,7 @@ test('"rural" sets a flag and de-emphasizes saturation tolerance', () => {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `node --test council/mandate.test.js`
+Run: `node council/mandate.test.js`
 Expected: FAIL — `Cannot find module './mandate.js'`.
 
 - [ ] **Step 3: Write minimal implementation**
@@ -620,7 +622,7 @@ Expected: FAIL — `Cannot find module './mandate.js'`.
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `node --test council/mandate.test.js`
+Run: `node council/mandate.test.js`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
@@ -644,8 +646,8 @@ The director plays these lines when live voices are off (always, in Phase 1). Li
 
 ```javascript
 // branchscape/council/script.test.js
-const test = require('node:test');
 const assert = require('node:assert');
+const { test, report } = require('./_harness.js');
 const SCRIPT = require('./script.js');
 const AGENTS = require('./agents.js');
 
@@ -677,7 +679,7 @@ test('crossExam includes a devil line and verdict includes the chair', () => {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `node --test council/script.test.js`
+Run: `node council/script.test.js`
 Expected: FAIL — `Cannot find module './script.js'`.
 
 - [ ] **Step 3: Write the implementation (complete default-mandate script)**
@@ -722,7 +724,7 @@ Expected: FAIL — `Cannot find module './script.js'`.
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `node --test council/script.test.js`
+Run: `node council/script.test.js`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
@@ -1213,8 +1215,8 @@ git commit -m "feat(council): 5-beat director, presenter controls, live redirect
 
 ```javascript
 // branchscape/council/integration.test.js
-const test = require('node:test');
 const assert = require('node:assert');
+const { test, report } = require('./_harness.js');
 global.window = {};
 require('../data/branches.js'); require('../data/cra_tract.js');
 require('../data/income.js'); require('../data/tracts.js');
@@ -1238,7 +1240,7 @@ test('full pipeline produces a sane ranking over real Maricopa data', () => {
 
 - [ ] **Step 2: Run the full suite**
 
-Run: `node --test council/`
+Run: `node council/`
 Expected: PASS (all suites: agents, engine, mandate, script, integration).
 
 - [ ] **Step 3: Add a README section**
