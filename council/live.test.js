@@ -23,4 +23,15 @@ test('agent_message finalizes the line and a new agent_thinking resets caption',
   assert.strictEqual(s.caption, 'X');
 });
 
+test('tool_call/tool_result tracked; vote carries agent; verdict captured', () => {
+  let s = initialState();
+  s = applyEvent(s, { type: 'tool_call', agent: 'market', data: { name: 'query_data', input: { metric: 'branch_count' } } });
+  assert.strictEqual(s.lastTool.name, 'query_data');
+  s = applyEvent(s, { type: 'vote_cast', agent: 'risk', data: { zone: '0401301', stance: 'oppose', rationale: 'saturated' } });
+  assert.strictEqual(s.votes[0].agent, 'risk');
+  assert.strictEqual(s.votes[0].stance, 'oppose');
+  s = applyEvent(s, { type: 'verdict', agent: 'chair', data: { text: 'We recommend X', votes: [] } });
+  assert.strictEqual(s.verdict.text, 'We recommend X');
+});
+
 report();

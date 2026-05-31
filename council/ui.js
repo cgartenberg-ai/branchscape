@@ -120,5 +120,16 @@ const CouncilUI = (function () {
 
   function clearTransient() { document.querySelectorAll('.c-chip,.c-beam').forEach(e => e.remove()); }
 
-  return { mount, setPhase, setActiveSpeaker, setReactions, setConfidence, showChips, attackBeam, clearTransient };
+  // A small "⚙ tool(...)" chip above an agent node, showing it is querying data live.
+  function showToolChip(agentId, label) {
+    const node = nodeEls[agentId]; if (!node) return;
+    const chip = document.createElement('div');
+    chip.className = 'c-toolchip';
+    chip.textContent = '⚙ ' + label;
+    chip.style.cssText = 'position:absolute;left:50%;top:-28px;transform:translateX(-50%);font-size:9px;white-space:nowrap;padding:2px 7px;border-radius:10px;background:rgba(20,40,66,.95);border:1px solid #2a5a8c;color:#9fd0ff;box-shadow:0 0 10px rgba(40,120,200,.4)';
+    node.appendChild(chip);
+    setTimeout(() => chip.remove(), 4000);
+  }
+
+  return { mount, setPhase, setActiveSpeaker, setReactions, setConfidence, showChips, attackBeam, showToolChip, clearTransient };
 })();
