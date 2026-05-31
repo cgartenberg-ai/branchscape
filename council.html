@@ -29,11 +29,21 @@
   <script src="council/ui.js"></script>
   <script src="council/director.js"></script>
   <script src="council/integration.browsercheck.js"></script>
+  <script src="council/live.js"></script>
   <script>
     CouncilMap.initMap();
     CouncilUI.mount();
-    Director.wireControls();
-    Director.start('Open one new branch in Maricopa — balance deposit growth with community access');
+    const params = new URLSearchParams(location.search);
+    if (params.has('live')) {
+      // Phase 2: real agents streamed from council_server over SSE.
+      const live = CouncilLive.connect({ onError: () => CouncilUI.setPhase('LIVE · connection lost') });
+      window.__council = live; // presenter handle (UI controls land in P2d)
+      CouncilUI.setPhase('LIVE · ready — __council.start("<mandate>") to begin');
+    } else {
+      // Phase 1 deterministic "demo" mode (fallback floor).
+      Director.wireControls();
+      Director.start('Open one new branch in Maricopa — balance deposit growth with community access');
+    }
   </script>
 </body>
 </html>
