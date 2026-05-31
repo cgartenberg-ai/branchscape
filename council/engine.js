@@ -50,17 +50,18 @@
   // & cost are modeled proxies (flagged in `modeled`).
   //
   // depositGap = DEMAND (income) x UNDER-CAPTURE. Under-capture is a bounded ratio
-  // (1 for a zone with no nearby deposits, →0 as deposits grow), so depositGap rises
+  // (→1 for a zone with no nearby deposits, →0 as deposits grow), so depositGap rises
   // with spending power AND with how little of it local branches capture. Crucially it
   // rises with income, while communityNeed rises as income FALLS — so a deposit-growth
   // mandate and a community-access mandate pull toward different zones (the demo's
-  // profit-vs-mission tension), instead of one outlier maxing every axis.
-  function deriveSignals(zones, opts = {}) {
-    const k = 1; // smoothing for ratios
+  // profit-vs-mission tension), instead of one near-empty outlier maxing every axis
+  // (the old income/(deposits+1) form blew up for tiny-deposit tracts).
+  function deriveSignals(zones) {
+    const k = 1; // smoothing
     const medianIncome = median(zones.map(z => z.income));
-    const capDep = median(zones.map(z => z.capturedDeposits).filter(d => d > 0)) || 1;
+    const medianCapDep = median(zones.map(z => z.capturedDeposits).filter(d => d > 0)) || 1;
     return zones.map(z => {
-      const underCapture = 1 - z.capturedDeposits / (z.capturedDeposits + capDep); // 1..~0
+      const underCapture = 1 - z.capturedDeposits / (z.capturedDeposits + medianCapDep); // 1..~0
       const depositGap = z.income * underCapture;
       const growth = z.capturedDeposits / (z.capturedBase + k);
       const incomeNeed = medianIncome > 0 ? Math.max(0, (medianIncome - z.income) / medianIncome) : 0;
@@ -125,10 +126,12 @@
       .map(a => ({ id: a.id, vote: agentSatisfied(frontRunner, a) }));
   }
   // Confidence = how much the front-runner stands out from the field (#1 vs #2,
-  // scaled by the score RANGE so it's stable), plus agent agreement. Because the
+  // scaled by the score RANGE so it is stable), plus agent agreement. Because the
   // margin is measured against the field range, penalizing the front-runner's score
   // (the Devil's challenge) always shrinks the gap → confidence drops monotonically,
   // and a challenge that flips the order leaves two bunched leaders → low confidence.
+  // (The old code used an unscaled (top-second) margin, so a penalty could reorder
+  // the field and paradoxically RAISE the reported number.)
   function computeConfidence(ranked, agents) {
     if (!ranked.length) return 0;
     const top = ranked[0];

@@ -106,4 +106,25 @@ test('applyChallenge lowers the front-runner score and confidence', () => {
   assert.ok(E.computeConfidence(after, AGENTS) <= before);
 });
 
+// --- regression tests for the two real-data bugs lost in the first build pass ---
+
+test('D3: a deposit-weighted vs community-weighted mandate pick DIFFERENT zones', () => {
+  const zones = E.normalizeZones(E.deriveSignals(E.buildZones(FIX, { radiusKm: 3 })));
+  const depositTop = E.rankZones(zones,
+    { depositGap: 2, growth: 1, communityNeed: 1, saturation: 1, cost: 0.5 })[0];
+  const communityTop = E.rankZones(zones,
+    { depositGap: 1, growth: 1, communityNeed: 3, saturation: 1, cost: 0.5 })[0];
+  // The mandate must actually move the winner — the old income/(deposits+1) form
+  // let one near-empty tract max every axis, so reweighting changed nothing.
+  assert.notStrictEqual(depositTop.geoid, communityTop.geoid);
+});
+
+test('D4: the devil\'s challenge never RAISES confidence (range-normalized margin)', () => {
+  const ranked = rankedFix(COMMUNITY_WEIGHTS);
+  const before = E.computeConfidence(ranked, AGENTS);
+  const after = E.applyChallenge(ranked, E.devilsChallenge(ranked, COMMUNITY_WEIGHTS));
+  const afterConf = E.computeConfidence(after, AGENTS);
+  assert.ok(afterConf <= before, `confidence rose after challenge: ${before} -> ${afterConf}`);
+});
+
 report();
