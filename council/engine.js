@@ -120,8 +120,32 @@
     return Math.round(Math.max(0, Math.min(100, pct)));
   }
 
+  function devilsChallenge(ranked, weights) {
+    const top = ranked[0];
+    const n = top.norm;
+    const candidates = [
+      { dimension: 'growth',        bad: 1 - n.growth },
+      { dimension: 'depositGap',    bad: 1 - n.depositGap },
+      { dimension: 'communityNeed', bad: 1 - n.communityNeed },
+      { dimension: 'saturation',    bad: n.saturation },
+      { dimension: 'cost',          bad: n.cost },
+    ];
+    candidates.sort((a, b) => b.bad - a.bad);
+    const worst = candidates[0];
+    return { targetGeoid: top.geoid, dimension: worst.dimension, penalty: 0.3 + 0.5 * worst.bad };
+  }
+  function applyChallenge(ranked, challenge) {
+    return ranked
+      .map(z => {
+        if (z.geoid !== challenge.targetGeoid) return Object.assign({}, z);
+        return Object.assign({}, z, { score: z.score - challenge.penalty });
+      })
+      .sort((a, b) => b.score - a.score);
+  }
+
   const Engine = { haversineKm, buildZones, deriveSignals, normalizeZones,
-    rankZones, scoreZone, computeVotes, computeConfidence, DEFAULT_WEIGHTS };
+    rankZones, scoreZone, computeVotes, computeConfidence, DEFAULT_WEIGHTS,
+    devilsChallenge, applyChallenge };
   if (typeof module !== 'undefined' && module.exports) module.exports = Engine;
   else global.CouncilEngine = Engine;
 })(typeof window !== 'undefined' ? window : globalThis);

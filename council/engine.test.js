@@ -87,4 +87,23 @@ test('normalizeZones maps each signal to 0..1 (winsorized) under z.norm', () => 
   assert.ok(byId.A.norm.saturation >= byId.B.norm.saturation);
 });
 
+test('devilsChallenge targets the front-runner\'s weakest dimension', () => {
+  const ranked = rankedFix(COMMUNITY_WEIGHTS);
+  const ch = E.devilsChallenge(ranked, COMMUNITY_WEIGHTS);
+  assert.strictEqual(ch.targetGeoid, ranked[0].geoid);
+  assert.ok(['depositGap', 'growth', 'communityNeed', 'saturation', 'cost'].includes(ch.dimension));
+  assert.ok(ch.penalty > 0);
+});
+
+test('applyChallenge lowers the front-runner score and confidence', () => {
+  const ranked = rankedFix(COMMUNITY_WEIGHTS);
+  const before = E.computeConfidence(ranked, AGENTS);
+  const ch = E.devilsChallenge(ranked, COMMUNITY_WEIGHTS);
+  const after = E.applyChallenge(ranked, ch);
+  const topAfter = after.find(z => z.geoid === ch.targetGeoid);
+  const topBefore = ranked.find(z => z.geoid === ch.targetGeoid);
+  assert.ok(topAfter.score < topBefore.score);
+  assert.ok(E.computeConfidence(after, AGENTS) <= before);
+});
+
 report();
