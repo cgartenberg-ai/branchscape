@@ -79,7 +79,49 @@
     });
   }
 
-  const Engine = { haversineKm, buildZones, deriveSignals, normalizeZones };
+  const DEFAULT_WEIGHTS = { depositGap: 1, growth: 1, communityNeed: 1, saturation: 1, cost: 0.5 };
+  function scoreZone(z, weights) {
+    const w = Object.assign({}, DEFAULT_WEIGHTS, weights);
+    const n = z.norm;
+    return w.depositGap * n.depositGap
+      + w.growth * n.growth
+      + w.communityNeed * n.communityNeed
+      - w.saturation * n.saturation
+      - w.cost * n.cost;
+  }
+  function rankZones(zones, weights) {
+    return zones
+      .map(z => Object.assign({}, z, { score: scoreZone(z, weights) }))
+      .sort((a, b) => b.score - a.score);
+  }
+  function agentSatisfied(zone, agent) {
+    if (agent.threshold === null) return null;
+    const v = zone.norm[agent.signal];
+    const eff = agent.invert ? (1 - v) : v;
+    if (eff >= agent.threshold) return 'yes';
+    if (eff >= agent.threshold - 0.2) return 'conditional';
+    return 'no';
+  }
+  function computeVotes(frontRunner, agents) {
+    return agents
+      .filter(a => a.threshold !== null)
+      .map(a => ({ id: a.id, vote: agentSatisfied(frontRunner, a) }));
+  }
+  function computeConfidence(ranked, agents) {
+    if (!ranked.length) return 0;
+    const top = ranked[0];
+    const margin = ranked.length > 1
+      ? Math.max(0, Math.min(1, (top.score - ranked[1].score)))
+      : 0.5;
+    const votes = computeVotes(top, agents);
+    const yes = votes.filter(v => v.vote === 'yes').length;
+    const agreement = votes.length ? yes / votes.length : 0;
+    const pct = 45 + 35 * margin + 20 * agreement;
+    return Math.round(Math.max(0, Math.min(100, pct)));
+  }
+
+  const Engine = { haversineKm, buildZones, deriveSignals, normalizeZones,
+    rankZones, scoreZone, computeVotes, computeConfidence, DEFAULT_WEIGHTS };
   if (typeof module !== 'undefined' && module.exports) module.exports = Engine;
   else global.CouncilEngine = Engine;
 })(typeof window !== 'undefined' ? window : globalThis);

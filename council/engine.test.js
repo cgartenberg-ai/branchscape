@@ -2,6 +2,11 @@
 const assert = require('node:assert');
 const { test, report } = require('./_harness.js');
 const E = require('./engine.js');
+const AGENTS = require('./agents.js');
+const COMMUNITY_WEIGHTS = { depositGap: 1, growth: 0.5, communityNeed: 2, saturation: 1, cost: 0.5 };
+function rankedFix(weights) {
+  return E.rankZones(E.normalizeZones(E.deriveSignals(E.buildZones(FIX, { radiusKm: 3 }))), weights);
+}
 
 // tiny deterministic fixture: 3 tracts, a few branches, cra + income
 const FIX = {
@@ -36,6 +41,28 @@ test('buildZones aggregates branches, cra, income per tract', () => {
   assert.strictEqual(byId.C.capturedDeposits, 0);
   assert.strictEqual(byId.A.craAmt, 5000);
   assert.strictEqual(byId.B.income, 40000); // nearest income point to B
+});
+
+test('rankZones sorts by weighted score, descending', () => {
+  const ranked = rankedFix(COMMUNITY_WEIGHTS);
+  for (let i = 1; i < ranked.length; i++) {
+    assert.ok(ranked[i - 1].score >= ranked[i].score);
+  }
+  assert.notStrictEqual(ranked[0].geoid, 'A');
+});
+
+test('computeConfidence returns 0..100', () => {
+  const ranked = rankedFix(COMMUNITY_WEIGHTS);
+  const c = E.computeConfidence(ranked, AGENTS);
+  assert.ok(c >= 0 && c <= 100);
+});
+
+test('computeVotes yields a yes/conditional/no per specialist agent', () => {
+  const ranked = rankedFix(COMMUNITY_WEIGHTS);
+  const votes = E.computeVotes(ranked[0], AGENTS);
+  const specialists = AGENTS.filter(a => a.threshold !== null);
+  assert.strictEqual(votes.length, specialists.length);
+  for (const v of votes) assert.ok(['yes', 'conditional', 'no'].includes(v.vote));
 });
 
 test('deriveSignals produces the five signal keys, modeled flags labeled', () => {
