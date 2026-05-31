@@ -24,6 +24,20 @@ def make_runner(hub, dataset):
         hub.publish({"type": "run_end", "data": {}})
     return runner
 
+def _check_key():
+    if os.environ.get("COUNCIL_FAKE") == "1":
+        print("COUNCIL_FAKE=1 → using the canned fake agent (no API key needed).")
+        return
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        print("\n  ⚠  ANTHROPIC_API_KEY is not set.\n"
+              "     Real agents need it. Either:\n"
+              "       export ANTHROPIC_API_KEY=sk-ant-...   then re-run, OR\n"
+              "       COUNCIL_FAKE=1 python3 -m council_server <port>   (canned dry run)\n")
+        sys.exit(1)
+    print("ANTHROPIC_API_KEY detected → real agents enabled.")
+
 if __name__ == "__main__":
-    port = int(sys.argv[1]) if len(sys.argv) > 1 else 8078
+    port = int(sys.argv[1]) if len(sys.argv) > 1 else 8099
+    _check_key()
+    print(f"Open  http://127.0.0.1:{port}/council.html?live   (use 127.0.0.1, NOT localhost)")
     serve(port, make_runner)
