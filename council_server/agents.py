@@ -39,14 +39,17 @@ class AgentRunner:
         self.emit = emit
         self.model = model or MODEL_FOR.get(agent_id)
 
-    def run_turn(self, transcript, max_tool_rounds=3):
+    def run_turn(self, transcript, max_tool_rounds=3, tools_enabled=True):
         system = ROLE_PROMPTS[self.id]
         messages = list(transcript)
+        # tools_enabled=False forces a prose-only turn (used for the Chair's final
+        # synthesis, so it can't burn the turn on tool calls and return empty text).
+        turn_tools = tools.schemas() if tools_enabled else []
         text, votes = "", []
         for _ in range(max_tool_rounds + 1):
             text, tool_calls = "", []
             for kind, payload in self.client.stream_agent_turn(
-                    system=system, messages=messages, tools=tools.schemas(), model=self.model):
+                    system=system, messages=messages, tools=turn_tools, model=self.model):
                 if kind == "thinking":
                     self.emit({"type": "agent_thinking", "agent": self.id, "data": {"text": payload}})
                 else:

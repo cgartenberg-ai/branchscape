@@ -20,6 +20,34 @@ def fake_for_full_run():
     scripted.append(line("The council recommends tract 12345 at moderate confidence; caveat noted."))
     return FakeClaude(scripted)
 
+def fake_with_empty_chair():
+    """Reproduces the live-run stall: specialists vote, but the Chair's synthesis
+    turn returns EMPTY text (in the real run it spent the turn on tool calls)."""
+    line = lambda t: {"text": t, "tool_calls": []}
+    s = []
+    for _ in range(5): s.append(line("Gathering."))
+    for _ in range(5): s.append(line("My position is tract 4705."))
+    for _ in range(3): s.append(line("Rebuttal."))
+    for _ in range(5):
+        s.append({"text": "", "tool_calls": [
+            {"id": "v", "name": "cast_vote",
+             "input": {"zone": "04013004705", "stance": "support", "rationale": "underserved"}}]})
+    s.append(line(""))  # chair: EMPTY synthesis -> the bug
+    return FakeClaude(s)
+
+class _BoomClient:
+    """Raises on every turn — simulates a real API/stream failure mid-run."""
+    def stream_agent_turn(self, **kw):
+        raise RuntimeError("simulated API failure")
+        yield  # pragma: no cover (makes this a generator)
+
+class _ToolCapture:
+    """Records the `tools` arg of each turn; always returns empty text, no tools."""
+    def __init__(self): self.tools_seen = []
+    def stream_agent_turn(self, system, messages, tools, model=None):
+        self.tools_seen.append(list(tools or []))
+        yield ("final", {"text": "ok", "tool_calls": []})
+
 class OrchestratorTest(unittest.TestCase):
     def test_full_run_emits_all_beats_and_a_verdict(self):
         ds = Dataset(DATA_DIR)
@@ -32,6 +60,35 @@ class OrchestratorTest(unittest.TestCase):
         self.assertTrue(any(e["type"] == "verdict" for e in events))
         self.assertEqual(events[0]["type"], "run_start")
         self.assertEqual(events[-1]["type"], "run_end")
+
+    def test_verdict_is_VISIBLE_even_when_chair_text_is_empty(self):
+        # THE live-run stall: empty chair synthesis must NOT produce a blank verdict.
+        ds = Dataset(DATA_DIR)
+        events = []
+        Orchestrator(ds, fake_with_empty_chair(), emit=events.append).run("m")
+        verdict = next(e for e in events if e["type"] == "verdict")
+        self.assertTrue(verdict["data"]["text"].strip(),
+                        "verdict text must be non-empty (derive a summary if the chair is silent)")
+        self.assertIn("tally", verdict["data"])
+        self.assertGreaterEqual(verdict["data"]["tally"].get("support", 0), 1)
+
+    def test_run_ALWAYS_concludes_even_if_every_turn_raises(self):
+        ds = Dataset(DATA_DIR)
+        events = []
+        Orchestrator(ds, _BoomClient(), emit=events.append).run("m")
+        types = [e["type"] for e in events]
+        self.assertIn("error", types, "a failed turn must surface a recorded error")
+        self.assertIn("verdict", types, "verdict must ALWAYS be emitted")
+        self.assertEqual(events[-1]["type"], "run_end", "run_end must ALWAYS be last")
+
+    def test_chair_synthesis_turn_gets_no_tools(self):
+        ds = Dataset(DATA_DIR)
+        cap = _ToolCapture()
+        Orchestrator(ds, cap, emit=lambda e: None).run("m")
+        # 18 specialist turns (gather5+positions5+crossExam3+vote5) see tools; the
+        # final (chair) turn must see an EMPTY tool list.
+        self.assertEqual(cap.tools_seen[-1], [], "chair synthesis turn must be tool-free")
+        self.assertTrue(len(cap.tools_seen[0]) > 0, "specialist turns DO get tools")
 
 if __name__ == "__main__":
     unittest.main()
