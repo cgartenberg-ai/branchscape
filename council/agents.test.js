@@ -1,6 +1,6 @@
 // branchscape/council/agents.test.js
-const test = require('node:test');
 const assert = require('node:assert');
+const { test, report } = require('./_harness.js');
 const AGENTS = require('./agents.js');
 
 test('roster has the six agents in order', () => {
@@ -23,6 +23,8 @@ test('specialist agents map to real signal keys; invert flags set', () => {
   const re = AGENTS.find(a => a.id === 'realestate');
   assert.ok(SIGNALS.includes(AGENTS.find(a => a.id === 'market').signal));
   assert.strictEqual(risk.signal, 'saturation');
-  assert.strictEqual(risk.invert, true);
-  assert.strictEqual(re.invert, true);
+  assert.strictEqual(risk.invert, true);   // lower saturation is better
+  assert.strictEqual(re.invert, true);      // lower cost is better
 });
+
+report();
