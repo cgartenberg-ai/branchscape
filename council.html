@@ -30,7 +30,9 @@
   <script src="council/director.js"></script>
   <script>
     CouncilMap.initMap();
-    // Director.start() wired in Task 11.
+    CouncilUI.mount();
+    Director.wireControls();
+    Director.start('Open one new branch in Maricopa — balance deposit growth with community access');
   </script>
 </body>
 </html>

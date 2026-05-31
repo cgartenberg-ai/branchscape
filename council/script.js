@@ -26,7 +26,7 @@
       ],
       verdict: [
         { agent: 'chair', text: 'I\'m calling the vote.' },
-        { agent: 'chair', text: 'The council recommends {front}, at {conf}% confidence — with the Devil\'s caveat on {dim} noted in the record.' },
+        { agent: 'chair', text: 'The council recommends {front}, at {confFinal}% confidence after the Devil\'s challenge — with the caveat on {dim} noted in the record.' },
       ],
     },
   };
