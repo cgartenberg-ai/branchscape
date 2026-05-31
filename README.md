@@ -8,6 +8,11 @@ and thins to 675 — the digital-banking consolidation story, made physical.
 
 Self-contained: this folder can be copied/moved anywhere.
 
+**Live:** https://cgartenberg-ai.github.io/branchscape/  (GitHub Pages, repo
+`cgartenberg-ai/branchscape`). To update it after editing: `git add -A && git commit
+-m "..." && git push` — Pages rebuilds in ~1 min. The street basemap needs internet;
+append `?offline` for a zero-network fallback (no basemap).
+
 ## Run it
 
 ```bash
