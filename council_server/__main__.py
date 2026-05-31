@@ -1,32 +1,46 @@
 # branchscape/council_server/__main__.py
-import os, sys
+import os, sys, time
 from council_server.app import serve
 from council_server.llm import ClaudeClient
 from council_server.fake_llm import FakeClaude
+from council_server.orchestrator import Orchestrator
+from council_server.record import Recorder
 from council_server import envfile
 
 # Load branchscape/.env (next to this package) if present, so the key can live in
 # a local untracked file instead of being re-exported each session. Shell env wins.
 envfile.load_env(os.path.join(os.path.dirname(__file__), "..", ".env"))
 
+RUNS_DIR = os.path.join(os.path.dirname(__file__), "..", "runs")
+
 def make_runner(hub, dataset):
-    # P2a: one real agent turn streamed to the hub. Replaced by the orchestrator in P2b.
+    """P2b: a full 6-agent orchestrated deliberation, streamed to the hub and recorded."""
     use_fake = os.environ.get("COUNCIL_FAKE") == "1"
     def runner(mandate):
-        client = (FakeClaude(scripted=[{"text": "Streaming a real thought about Maricopa branch siting.", "tool_calls": []}])
-                  if use_fake else ClaudeClient())
-        hub.publish({"type": "run_start", "data": {"mandate": mandate}})
-        hub.publish({"type": "phase_change", "data": {"beat": "positions"}})
-        for kind, payload in client.stream_agent_turn(
-            system="You are the Market Analyst on a bank branch-siting council. One vivid sentence.",
-            messages=[{"role": "user", "content": mandate or "Where should we open the next branch in Maricopa County?"}],
-            tools=[],
-        ):
-            if kind == "thinking":
-                hub.publish({"type": "agent_thinking", "agent": "market", "data": {"text": payload}})
-            else:
-                hub.publish({"type": "agent_message", "agent": "market", "data": {"text": payload["text"]}})
-        hub.publish({"type": "run_end", "data": {}})
+        os.makedirs(RUNS_DIR, exist_ok=True)
+        rec = Recorder(os.path.join(RUNS_DIR, f"run-{int(time.time())}.jsonl"))
+        def emit(evt):
+            rec.write(hub.publish(evt))  # hub stamps ts + defaults; recorder persists that same dict
+        if use_fake:
+            # enough canned turns for a full run: 5 gather + 5 positions + 3 crossExam
+            # + 5 votes + 1 chair verdict. Generic text; votes carry a cast_vote tool call.
+            scripted = []
+            for _ in range(5): scripted.append({"text": "Gathering data.", "tool_calls": []})
+            for _ in range(5): scripted.append({"text": "My opening position is tract 12345.", "tool_calls": []})
+            for _ in range(3): scripted.append({"text": "On reflection, I push back.", "tool_calls": []})
+            for _ in range(5): scripted.append({"text": "Casting my vote.", "tool_calls": [
+                {"id": "v", "name": "cast_vote",
+                 "input": {"zone": "04013012345", "stance": "support", "rationale": "widest gap"}}]})
+            scripted.append({"text": "The council recommends tract 12345 at moderate confidence.", "tool_calls": []})
+            client = FakeClaude(scripted=scripted)
+        else:
+            client = ClaudeClient()
+        try:
+            Orchestrator(dataset, client, emit).run(mandate)
+        except Exception as e:
+            hub.publish({"type": "error", "data": {"message": str(e)}})
+        finally:
+            rec.close()
     return runner
 
 def _check_key():

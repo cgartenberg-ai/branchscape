@@ -47,9 +47,22 @@ class CouncilHandler(SimpleHTTPRequestHandler):
             self.send_error(404); return
         length = int(self.headers.get("Content-Length", 0))
         body = json.loads(self.rfile.read(length) or b"{}")
-        if body.get("action") == "start":
+        action = body.get("action")
+        if action == "start":
             mandate = body.get("mandate", "")
             threading.Thread(target=self.runner, args=(mandate,), daemon=True).start()
+        elif action == "replay":
+            import os
+            from council_server.record import replay_events
+            path = body.get("path") or os.path.join(ROOT, "runs", "golden.jsonl")
+            speed = float(body.get("speed", 1.0))
+            def play():
+                if not os.path.exists(path):
+                    self.hub.publish({"type": "error", "data": {"message": "no golden run to replay"}})
+                    return
+                for evt in replay_events(path, speed=speed):
+                    self.hub.publish(evt)
+            threading.Thread(target=play, daemon=True).start()
         self.send_response(204); self.end_headers()
 
 def serve(port, runner_factory, host="127.0.0.1"):
