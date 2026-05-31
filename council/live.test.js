@@ -1,7 +1,7 @@
 // branchscape/council/live.test.js
 const assert = require('node:assert');
 const { test, report } = require('./_harness.js');
-const { applyEvent, initialState } = require('./live.js');
+const { applyEvent, initialState, verdictText } = require('./live.js');
 
 test('agent_thinking appends streamed text for the active agent', () => {
   let s = initialState();
@@ -32,6 +32,32 @@ test('tool_call/tool_result tracked; vote carries agent; verdict captured', () =
   assert.strictEqual(s.votes[0].stance, 'oppose');
   s = applyEvent(s, { type: 'verdict', agent: 'chair', data: { text: 'We recommend X', votes: [] } });
   assert.strictEqual(s.verdict.text, 'We recommend X');
+});
+
+test('empty agent_message does NOT blank the caption (keeps the last real line)', () => {
+  let s = initialState();
+  s = applyEvent(s, { type: 'agent_message', agent: 'chair', data: { text: "I'll synthesize and call the vote." } });
+  assert.strictEqual(s.caption, "I'll synthesize and call the vote.");
+  s = applyEvent(s, { type: 'agent_message', agent: 'chair', data: { text: '' } }); // the bug: empty msg
+  assert.strictEqual(s.caption, "I'll synthesize and call the vote.", 'empty message must not blank caption');
+});
+
+test('error captured (never silent); run_end marks done', () => {
+  let s = initialState();
+  s = applyEvent(s, { type: 'error', agent: 'chair', data: { message: 'chair turn failed: boom' } });
+  assert.ok(s.lastError && /boom/.test(s.lastError.message));
+  s = applyEvent(s, { type: 'run_end', data: {} });
+  assert.strictEqual(s.done, true);
+});
+
+test('verdictText falls back to a tally summary when chair text is empty', () => {
+  // the live-run stall: empty verdict text must still produce a VISIBLE conclusion
+  const empty = verdictText({ text: '', tally: { support: 4, oppose: 1 },
+                              votes: [{ zone: '04013004705', stance: 'support' }] });
+  assert.ok(empty && empty.length > 0, 'must derive non-empty text');
+  assert.ok(/4 support/.test(empty));
+  // and uses the chair's real text when present
+  assert.strictEqual(verdictText({ text: 'Recommend tract 4705.', tally: {} }), 'Recommend tract 4705.');
 });
 
 report();
