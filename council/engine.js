@@ -39,7 +39,47 @@
     return zones;
   }
 
-  const Engine = { haversineKm, buildZones };
+  // Derived signals. depositGap & communityNeed grounded; growth & cost modeled.
+  function deriveSignals(zones, opts = {}) {
+    const k = 1; // smoothing for ratios (deposits in $k)
+    const incomes = zones.map(z => z.income).sort((a, b) => a - b);
+    const medianIncome = incomes[Math.floor(incomes.length / 2)] || 0;
+    return zones.map(z => {
+      const depositGap = z.income / (z.capturedDeposits + k);
+      const growth = z.capturedDeposits / (z.capturedBase + k);
+      const incomeNeed = medianIncome > 0 ? Math.max(0, (medianIncome - z.income) / medianIncome) : 0;
+      const craNeed = 1 / (z.craAmt + k);
+      const communityNeed = 0.5 * incomeNeed + 0.5 * craNeed;
+      const cost = z.income;
+      return Object.assign({}, z, {
+        depositGap, growth, communityNeed,
+        saturation: z.saturation, cost,
+        modeled: ['growth', 'cost'],
+      });
+    });
+  }
+
+  function winsor(values, p = 0.05) {
+    const s = [...values].sort((a, b) => a - b);
+    const lo = s[Math.floor(p * (s.length - 1))];
+    const hi = s[Math.ceil((1 - p) * (s.length - 1))];
+    return { lo, hi };
+  }
+  function normalizeZones(zones) {
+    const keys = ['depositGap', 'growth', 'communityNeed', 'saturation', 'cost'];
+    const bounds = {};
+    for (const key of keys) bounds[key] = winsor(zones.map(z => z[key]));
+    return zones.map(z => {
+      const norm = {};
+      for (const key of keys) {
+        const { lo, hi } = bounds[key];
+        norm[key] = hi > lo ? Math.min(1, Math.max(0, (z[key] - lo) / (hi - lo))) : 0;
+      }
+      return Object.assign({}, z, { norm });
+    });
+  }
+
+  const Engine = { haversineKm, buildZones, deriveSignals, normalizeZones };
   if (typeof module !== 'undefined' && module.exports) module.exports = Engine;
   else global.CouncilEngine = Engine;
 })(typeof window !== 'undefined' ? window : globalThis);

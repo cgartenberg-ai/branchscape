@@ -38,4 +38,26 @@ test('buildZones aggregates branches, cra, income per tract', () => {
   assert.strictEqual(byId.B.income, 40000); // nearest income point to B
 });
 
+test('deriveSignals produces the five signal keys, modeled flags labeled', () => {
+  const zones = E.deriveSignals(E.buildZones(FIX, { radiusKm: 3 }));
+  const z = zones[0];
+  for (const k of ['depositGap', 'growth', 'communityNeed', 'saturation', 'cost']) {
+    assert.strictEqual(typeof z[k], 'number', `missing signal ${k}`);
+  }
+  assert.ok(z.modeled.includes('growth'));
+  assert.ok(z.modeled.includes('cost'));
+});
+
+test('normalizeZones maps each signal to 0..1 (winsorized) under z.norm', () => {
+  const zones = E.normalizeZones(E.deriveSignals(E.buildZones(FIX, { radiusKm: 3 })));
+  for (const z of zones) {
+    for (const k of ['depositGap', 'growth', 'communityNeed', 'saturation', 'cost']) {
+      assert.ok(z.norm[k] >= 0 && z.norm[k] <= 1, `${k} out of range: ${z.norm[k]}`);
+    }
+  }
+  const byId = Object.fromEntries(zones.map(z => [z.geoid, z]));
+  assert.ok(byId.C.norm.communityNeed >= byId.A.norm.communityNeed);
+  assert.ok(byId.A.norm.saturation >= byId.B.norm.saturation);
+});
+
 report();
