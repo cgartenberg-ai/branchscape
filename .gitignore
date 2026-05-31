@@ -5,3 +5,5 @@ __pycache__/
 *.pyc
 runs/*.jsonl
 !runs/golden.jsonl
+# NEVER commit the API key — .env holds ANTHROPIC_API_KEY locally
+.env

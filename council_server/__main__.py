@@ -3,6 +3,11 @@ import os, sys
 from council_server.app import serve
 from council_server.llm import ClaudeClient
 from council_server.fake_llm import FakeClaude
+from council_server import envfile
+
+# Load branchscape/.env (next to this package) if present, so the key can live in
+# a local untracked file instead of being re-exported each session. Shell env wins.
+envfile.load_env(os.path.join(os.path.dirname(__file__), "..", ".env"))
 
 def make_runner(hub, dataset):
     # P2a: one real agent turn streamed to the hub. Replaced by the orchestrator in P2b.
