@@ -10,7 +10,9 @@
 
 THE COUNCIL is **Act 2 of BRANCHSCAPE** — a stage demo for ~400 ABA bankers (~mid-June 2026). Six **real Claude agents** (Chair, Market Analyst, Risk Officer, Community/CRA Officer, Real-Estate Scout, Devil's Advocate) deliberate live over real Maricopa County banking data and emerge a branch-siting recommendation. A local Python server (`council_server/`) holds the API key and streams the deliberation to the browser over Server-Sent Events; the existing "council of light" deck.gl UI renders it. **The user LOVED the first real run** ("AMAZING, I LOVE IT") — the quality bar is set by that run (`runs/run-1780262035.jsonl`, full paragraphs with real figures).
 
-Everything is committed and clean on branch `design/the-council` (NOT merged, NOT pushed). All tests pass: **29 Python server tests, 7 JS reducer tests, Phase-1 JS suite green.**
+Everything is committed and clean on branch `design/the-council` (NOT merged, NOT pushed). All tests pass: **29 Python server tests, 6 JS reducer tests (`council/live.test.js`), Phase-1 JS suite green.**
+
+> ⚠️ A real `council_server` may still be running on **port 8099** from this session. Before the next real run, `pkill -f council_server; pkill -f "http.server"` to avoid stale-server confusion.
 
 **Immediate next action:** The user APPROVED building the **bank-profile setup panel** (presenter UI: archetype presets + custom fields → agents reason AS that bank), but then said "stop and wait for instructions." So: **do NOT auto-start building. Confirm with the user first**, then build the setup panel as the next chunk.
 
@@ -90,7 +92,7 @@ branchscape/
 ```bash
 cd "/Users/cgart/Penn Dropbox/Claudine Gartenberg/Feedforward/playground/orgscience/branchscape"
 python3 -m unittest discover -s council_server -p "*_test.py"   # → Ran 29 tests OK
-node council/live.test.js   # → RESULT tests=7 pass=7 fail=0 (see council/.last-test-result)
+node council/live.test.js   # → RESULT tests=6 pass=6 fail=0 (see council/.last-test-result)
 ./run-tests.sh              # → ALL TESTS PASS (Phase-1 JS)
 ```
 
