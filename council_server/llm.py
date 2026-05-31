@@ -4,17 +4,22 @@ import os
 class ClaudeClient:
     """Thin wrapper over the anthropic Messages API with streaming + tool use.
     Mirrors FakeClaude.stream_agent_turn so the orchestrator is client-agnostic."""
-    def __init__(self, model="claude-sonnet-4-5", api_key=None):
+    def __init__(self, model="claude-sonnet-4-5", api_key=None, timeout=90.0, max_tokens=1500):
         import anthropic  # imported lazily so tests never need the SDK/key
         self._anthropic = anthropic
-        self._client = anthropic.Anthropic(api_key=api_key or os.environ.get("ANTHROPIC_API_KEY"))
+        # A per-request timeout converts a stalled stream into a RAISE, which the
+        # orchestrator's per-turn guard turns into a recorded error + continue —
+        # so a hung turn can never silently freeze the whole deliberation.
+        self._client = anthropic.Anthropic(
+            api_key=api_key or os.environ.get("ANTHROPIC_API_KEY"), timeout=timeout)
         self._model = model
+        self._max_tokens = max_tokens
 
     def stream_agent_turn(self, system, messages, tools, model=None):
         text_parts, tool_calls = [], []
         with self._client.messages.stream(
             model=model or self._model,
-            max_tokens=1024,
+            max_tokens=self._max_tokens,
             system=system,
             messages=messages,
             tools=tools or [],
