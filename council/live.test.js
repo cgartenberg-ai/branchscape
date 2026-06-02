@@ -60,4 +60,16 @@ test('verdictText falls back to a tally summary when chair text is empty', () =>
   assert.strictEqual(verdictText({ text: 'Recommend tract 4705.', tally: {} }), 'Recommend tract 4705.');
 });
 
+test('verdict marks the decision memo as pending; artifacts clears it and stores urls', () => {
+  // The server generates the memo AFTER the verdict (a second model call), so the UI
+  // must show a "generating…" state in between or the report looks like it never came.
+  let s = initialState();
+  assert.strictEqual(s.reportPending, false);
+  s = applyEvent(s, { type: 'verdict', agent: 'chair', data: { text: 'Recommend X', votes: [] } });
+  assert.strictEqual(s.reportPending, true, 'memo is generating right after the verdict');
+  s = applyEvent(s, { type: 'artifacts', data: { report: '/runs/r-report.md', transcript: '/runs/r-transcript.md' } });
+  assert.strictEqual(s.reportPending, false, 'memo arrived');
+  assert.strictEqual(s.artifacts.report, '/runs/r-report.md');
+});
+
 report();

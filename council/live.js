@@ -2,7 +2,8 @@
 (function (global) {
   function initialState() {
     return { beat: null, activeAgent: null, caption: '', lastMessage: null,
-             votes: [], verdict: null, lastError: null, done: false };
+             votes: [], verdict: null, lastError: null, done: false,
+             reportPending: false, artifacts: null };
   }
 
   // Pure: build a non-empty conclusion string from a verdict payload. Uses the
@@ -47,9 +48,11 @@
       case 'tool_call': s.lastTool = { agent: evt.agent, name: evt.data.name, input: evt.data.input }; break;
       case 'tool_result': s.lastToolResult = { agent: evt.agent, name: evt.data.name, result: evt.data.result }; break;
       case 'vote_cast': s.votes = s.votes.concat([Object.assign({ agent: evt.agent }, evt.data)]); break;
-      case 'verdict': s.verdict = evt.data; break;
+      // The decision memo is generated AFTER the verdict (a second model call), so mark it
+      // pending here; the artifacts event clears it once the memo + transcript are written.
+      case 'verdict': s.verdict = evt.data; s.reportPending = true; break;
       case 'error': s.lastError = { agent: evt.agent, message: (evt.data && evt.data.message) || 'error' }; break;
-      case 'artifacts': s.artifacts = evt.data; break;
+      case 'artifacts': s.artifacts = evt.data; s.reportPending = false; break;
       case 'run_end': s.done = true; break;
       default: break;
     }
@@ -63,11 +66,12 @@
     es.onmessage = (m) => {
       let evt; try { evt = JSON.parse(m.data); } catch (e) { return; }
       state = applyEvent(state, evt);
-      try { render(evt, state); } catch (e) { /* a render slip must never stop the stream */ }
+      // a render slip must never stop the stream — but surface it so it isn't silent
+      try { render(evt, state); } catch (e) { try { console.warn('[council] render error', evt && evt.type, e); } catch (_) {} }
     };
     es.onerror = () => { if (opts && opts.onError) opts.onError(); };
     return {
-      start: (mandate) => fetch('/control', { method: 'POST', body: JSON.stringify({ action: 'start', mandate }) }),
+      start: (mandate, profile) => fetch('/control', { method: 'POST', body: JSON.stringify({ action: 'start', mandate, profile }) }),
       callQuestion: () => fetch('/control', { method: 'POST', body: JSON.stringify({ action: 'call_question' }) }),
       replay: () => fetch('/control', { method: 'POST', body: JSON.stringify({ action: 'replay' }) }),
       state: () => state,
@@ -93,6 +97,9 @@
     if (evt.type === 'verdict') {
       CouncilUI.setActiveSpeaker('chair', verdictText(evt.data));  // never blank
       CouncilUI.setPhase('VERDICT');
+      // the memo is still being written server-side — show a pending cue so the
+      // report doesn't look like it never arrived during that ~30-40s gap.
+      if (typeof CouncilUI.showArtifacts === 'function') CouncilUI.showArtifacts(null, true);
     }
     if (evt.type === 'error') {
       CouncilUI.setPhase('⚠ ERROR');

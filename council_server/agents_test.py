@@ -2,9 +2,16 @@
 import os, unittest
 from council_server.data import Dataset
 from council_server.fake_llm import FakeClaude
-from council_server.agents import AgentRunner, ROLE_PROMPTS, AGENT_IDS
+from council_server.agents import AgentRunner, ROLE_PROMPTS, AGENT_IDS, build_profile_preamble
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "data")
+
+class _SystemCapture:
+    """Records the `system` of each turn; returns benign text, no tools."""
+    def __init__(self): self.systems = []
+    def stream_agent_turn(self, system, messages, tools, model=None):
+        self.systems.append(system)
+        yield ("final", {"text": "ok", "tool_calls": []})
 
 class AgentsTest(unittest.TestCase):
     def test_six_roles_defined(self):
@@ -27,6 +34,26 @@ class AgentsTest(unittest.TestCase):
         self.assertIn("tool_call", kinds)
         self.assertIn("tool_result", kinds)
         self.assertTrue(result["text"].startswith("With 600+"))
+
+    def test_build_profile_preamble_blank_when_no_profile(self):
+        self.assertEqual(build_profile_preamble(None), "")
+        self.assertEqual(build_profile_preamble({}), "")
+
+    def test_build_profile_preamble_carries_bank_identity(self):
+        pre = build_profile_preamble({
+            "name": "Cactus Community Bank", "type": "community", "asset_size": "$850M",
+            "region": "East Valley", "values": ["CRA leadership", "small-business lending"]})
+        for needle in ["Cactus Community Bank", "community", "East Valley", "CRA leadership"]:
+            self.assertIn(needle, pre)
+
+    def test_run_turn_prepends_profile_preamble_to_system(self):
+        ds = Dataset(DATA_DIR)
+        cap = _SystemCapture()
+        AgentRunner("market", ds, cap, emit=lambda e: None,
+                    profile_preamble="BANKCTX-XYZ").run_turn(
+            transcript=[{"role": "user", "content": "go"}])
+        self.assertIn("BANKCTX-XYZ", cap.systems[0])           # profile injected
+        self.assertIn(ROLE_PROMPTS["market"], cap.systems[0])  # role prompt preserved
 
     def test_run_turn_emits_vote_cast_when_agent_votes(self):
         ds = Dataset(DATA_DIR)

@@ -48,7 +48,44 @@ class _ToolCapture:
         self.tools_seen.append(list(tools or []))
         yield ("final", {"text": "ok", "tool_calls": []})
 
+class _RecordingClient:
+    """Wraps an inner client, recording each turn's last user instruction while
+    delegating the actual scripted behavior (so votes still get cast)."""
+    def __init__(self, inner): self.inner = inner; self.instructions = []
+    def stream_agent_turn(self, system, messages, tools, model=None):
+        last_user = next((m["content"] for m in reversed(messages)
+                          if m.get("role") == "user"), "")
+        self.instructions.append(last_user)
+        yield from self.inner.stream_agent_turn(
+            system=system, messages=messages, tools=tools, model=model)
+
+class _SystemCapture:
+    """Records the `system` of every turn; returns benign text, no tools."""
+    def __init__(self): self.systems = []
+    def stream_agent_turn(self, system, messages, tools, model=None):
+        self.systems.append(system)
+        yield ("final", {"text": "ok", "tool_calls": []})
+
 class OrchestratorTest(unittest.TestCase):
+    def test_profile_threads_into_every_agent_system_prompt(self):
+        # The presenter's bank profile must reach EVERY agent (incl. the Chair),
+        # so the whole council reasons AS that specific bank.
+        ds = Dataset(DATA_DIR)
+        cap = _SystemCapture()
+        profile = {"name": "Sonoran Ag & Trust", "type": "rural agricultural",
+                   "region": "West Valley", "values": ["agricultural lending"]}
+        Orchestrator(ds, cap, emit=lambda e: None).run("m", profile)
+        self.assertTrue(cap.systems, "agents should have run")
+        self.assertTrue(all("Sonoran Ag & Trust" in s for s in cap.systems),
+                        "every agent turn must carry the bank profile")
+
+    def test_no_profile_leaves_role_prompts_unchanged(self):
+        ds = Dataset(DATA_DIR)
+        cap = _SystemCapture()
+        Orchestrator(ds, cap, emit=lambda e: None).run("m")  # no profile
+        from council_server.agents import ROLE_PROMPTS
+        self.assertEqual(cap.systems[0], ROLE_PROMPTS["market"])  # first turn = market, verbatim
+
     def test_full_run_emits_all_beats_and_a_verdict(self):
         ds = Dataset(DATA_DIR)
         events = []
@@ -80,6 +117,17 @@ class OrchestratorTest(unittest.TestCase):
         self.assertIn("error", types, "a failed turn must surface a recorded error")
         self.assertIn("verdict", types, "verdict must ALWAYS be emitted")
         self.assertEqual(events[-1]["type"], "run_end", "run_end must ALWAYS be last")
+
+    def test_chair_instruction_surfaces_plurality_and_grants_overrule(self):
+        # The Chair's judgment prevails: its synthesis turn must be told the vote
+        # plurality AND be explicitly allowed to overrule it (while acknowledging it).
+        ds = Dataset(DATA_DIR)
+        rec = _RecordingClient(fake_for_full_run())  # all 5 votes -> tract …2345
+        Orchestrator(ds, rec, emit=lambda e: None).run("m")
+        chair_instruction = rec.instructions[-1]      # the final (chair) turn
+        self.assertIn("2345", chair_instruction, "chair must see the plurality tract")
+        self.assertIn("overrule", chair_instruction.lower())
+        self.assertIn("acknowledge", chair_instruction.lower())
 
     def test_chair_synthesis_turn_gets_no_tools(self):
         ds = Dataset(DATA_DIR)

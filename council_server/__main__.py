@@ -10,6 +10,10 @@ from council_server import envfile, reporter
 RUNS_DIR = os.path.join(os.path.dirname(__file__), "..", "runs")
 ENV_PATH = os.path.join(os.path.dirname(__file__), "..", ".env")
 
+# The decision memo is a full 6-section document — give it a much larger budget than
+# a single conversational turn (1500), which truncated the memo mid-sentence.
+REPORT_MAX_TOKENS = 4000
+
 def _build_fake_client():
     """Enough canned turns for a full keyless run: 5 gather + 5 positions +
     3 crossExam + 5 votes + 1 chair verdict. Votes carry a cast_vote tool call."""
@@ -27,7 +31,7 @@ def make_runner(hub, dataset):
     """A full 6-agent orchestrated deliberation, streamed to the hub + recorded, then
     summarized into <stem>-transcript.md + an AI decision memo <stem>-report.md."""
     use_fake = os.environ.get("COUNCIL_FAKE") == "1"
-    def runner(mandate):
+    def runner(mandate, profile=None):
         os.makedirs(RUNS_DIR, exist_ok=True)
         stem = f"run-{int(time.time())}"
         rec = Recorder(os.path.join(RUNS_DIR, f"{stem}.jsonl"))
@@ -38,7 +42,7 @@ def make_runner(hub, dataset):
             events.append(stamped)      # accumulate for the artifacts
         client = _build_fake_client() if use_fake else ClaudeClient()
         try:
-            Orchestrator(dataset, client, emit).run(mandate)
+            Orchestrator(dataset, client, emit).run(mandate, profile)
         except Exception as e:
             emit({"type": "error", "data": {"message": str(e)}})
             emit({"type": "run_end", "data": {}})
@@ -47,7 +51,8 @@ def make_runner(hub, dataset):
         # Write the transcript + AI decision memo, then tell the browser where they are.
         try:
             report_client = (FakeClaude([{"text": "# Decision Memo\n(stub memo — fake mode)",
-                                          "tool_calls": []}]) if use_fake else ClaudeClient())
+                                          "tool_calls": []}]) if use_fake
+                             else ClaudeClient(max_tokens=REPORT_MAX_TOKENS))
             urls = reporter.write_artifacts(events, RUNS_DIR, stem, report_client)
             hub.publish({"type": "artifacts", "data": urls})
         except Exception as e:

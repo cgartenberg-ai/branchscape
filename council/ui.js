@@ -132,16 +132,28 @@ const CouncilUI = (function () {
   }
 
   // Download panel for the post-run artifacts (full transcript + AI decision memo).
-  function showArtifacts(urls) {
+  // pending=true renders a "generating…" cue shown at the verdict, before the memo
+  // finishes writing server-side; it is replaced by real links when artifacts arrive.
+  function showArtifacts(urls, pending) {
     const old = document.getElementById('c-artifacts'); if (old) old.remove();
     const bar = el('div'); bar.id = 'c-artifacts';
     bar.style.cssText = 'position:absolute;top:96px;right:28px;width:214px;display:flex;flex-direction:column;gap:7px;pointer-events:auto;z-index:5';
     const link = (href, label, icon) =>
       `<a href="${href}" download target="_blank" style="display:block;text-decoration:none;font-size:12px;color:#cfe0f5;background:linear-gradient(90deg,rgba(20,40,66,.95),rgba(28,52,84,.95));border:1px solid #2a5a8c;border-radius:8px;padding:8px 11px;box-shadow:0 0 12px rgba(40,120,200,.25)">${icon} ${label}</a>`;
+    const pendingRow = (label) =>
+      `<div style="font-size:12px;color:#9fb6d2;background:rgba(20,40,66,.7);border:1px solid #244a70;border-radius:8px;padding:8px 11px;display:flex;align-items:center;gap:8px">` +
+      `<span class="c-spin" style="display:inline-block;width:11px;height:11px;border:2px solid #2a5a8c;border-top-color:#7db8ff;border-radius:50%;animation:c-spin .8s linear infinite"></span>${label}</div>`;
+    if (!document.getElementById('c-spin-kf')) {
+      const st = document.createElement('style'); st.id = 'c-spin-kf';
+      st.textContent = '@keyframes c-spin{to{transform:rotate(360deg)}}'; document.head.appendChild(st);
+    }
+    const hasUrls = urls && (urls.report || urls.transcript);
     bar.innerHTML =
       '<div style="font-size:10px;letter-spacing:2px;color:#6b819c;text-transform:uppercase">Council record</div>' +
-      ((urls && urls.report) ? link(urls.report, 'Decision memo', '📄') : '') +
-      ((urls && urls.transcript) ? link(urls.transcript, 'Full transcript', '📝') : '');
+      (hasUrls
+        ? (((urls.report) ? link(urls.report, 'Decision memo', '📄') : '') +
+           ((urls.transcript) ? link(urls.transcript, 'Full transcript', '📝') : ''))
+        : (pending ? pendingRow('Drafting decision memo…') : ''));
     hud.appendChild(bar);
   }
 

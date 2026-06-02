@@ -25,12 +25,14 @@ def parse_env(text):
     return out
 
 def load_env(path, override=False):
-    """Load KEY=VALUE pairs from `path` into os.environ. Existing env vars win
-    unless override=True. Returns the dict of keys applied (no-op if missing)."""
+    """Load KEY=VALUE pairs from `path` into os.environ. A non-empty existing env
+    var wins unless override=True; but an ABSENT or empty/whitespace-only existing
+    var is filled from the file (a shell that exports ANTHROPIC_API_KEY="" must not
+    silently shadow the real key in .env). Returns the dict applied (no-op if missing)."""
     if not os.path.exists(path):
         return {}
     applied = parse_env(open(path, encoding="utf-8").read())
     for k, v in applied.items():
-        if override or k not in os.environ:
+        if override or not os.environ.get(k, "").strip():
             os.environ[k] = v
     return applied

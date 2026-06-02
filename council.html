@@ -30,19 +30,43 @@
   <script src="council/director.js"></script>
   <script src="council/integration.browsercheck.js"></script>
   <script src="council/live.js"></script>
+  <script src="council/setup.js"></script>
   <script>
     CouncilMap.initMap();
     CouncilUI.mount();
     const params = new URLSearchParams(location.search);
-    if (params.has('live')) {
-      // Phase 2: real agents streamed from council_server over SSE.
+
+    // Phase 2: real agents streamed from council_server over SSE + the setup panel.
+    function startLive() {
       const live = CouncilLive.connect({ onError: () => CouncilUI.setPhase('LIVE · connection lost') });
-      window.__council = live; // presenter handle (UI controls land in P2d)
-      CouncilUI.setPhase('LIVE · ready — __council.start("<mandate>") to begin');
-    } else {
-      // Phase 1 deterministic "demo" mode (fallback floor).
+      window.__council = live; // presenter handle (also drives the setup panel)
+      CouncilUI.setPhase('LIVE · ready');
+      // Pick a bank archetype + mandate, then "Convene the council".
+      // (Console fallback still works: __council.start("<mandate>", profile).)
+      CouncilSetup.mount((mandate, profile) => {
+        CouncilUI.setPhase('LIVE · convening…');
+        live.start(mandate, profile);
+      });
+    }
+    // Phase 1 deterministic, fully-local "demo" mode (the safe fallback floor).
+    function startDemo() {
       Director.wireControls();
       Director.start('Open one new branch in Maricopa — balance deposit growth with community access');
+    }
+
+    // LIVE IS THE DEFAULT. `?demo` forces the canned demo (rehearsal / no-API safety).
+    // Otherwise probe the server: real agents if council_server answers, else degrade
+    // gracefully to the Phase-1 demo (so a bare URL "just works" on the laptop, and a
+    // static host like GitHub Pages safely falls back instead of showing a dead page).
+    // This removes the old `?live` footgun: losing the query string can never strand
+    // the presenter in the canned demo while the real server is sitting right there.
+    if (params.has('demo')) {
+      startDemo();
+    } else {
+      CouncilUI.setPhase('LIVE · connecting…');
+      fetch('health', { method: 'GET', cache: 'no-store' })
+        .then(r => (r && r.ok) ? startLive() : startDemo())
+        .catch(() => startDemo());
     }
   </script>
 </body>

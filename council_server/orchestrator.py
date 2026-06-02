@@ -1,6 +1,6 @@
 # branchscape/council_server/orchestrator.py
 import collections
-from council_server.agents import AgentRunner
+from council_server.agents import AgentRunner, build_profile_preamble
 
 SPECIALISTS = ["market", "risk", "community", "realestate", "devil"]
 
@@ -25,9 +25,11 @@ class Orchestrator:
         self.emit = emit
         self.transcript = []   # shared chat all agents see
         self.votes = []
+        self.profile_preamble = ""  # set per-run from the presenter's bank profile
 
     def _runner(self, agent_id):
-        return AgentRunner(agent_id, self.ds, self.client, emit=self.emit)
+        return AgentRunner(agent_id, self.ds, self.client, emit=self.emit,
+                           profile_preamble=self.profile_preamble)
 
     def _say(self, agent_id, instruction, tools_enabled=True):
         """Resilient single turn: a failure becomes a recorded error + empty result,
@@ -61,8 +63,9 @@ class Orchestrator:
         where = f"tract {str(zone)[-4:]}" if zone else "no clear front-runner"
         return f"The council has voted ({parts}). Recommendation: {where}."
 
-    def run(self, mandate):
-        self.emit({"type": "run_start", "data": {"mandate": mandate}})
+    def run(self, mandate, profile=None):
+        self.profile_preamble = build_profile_preamble(profile)
+        self.emit({"type": "run_start", "data": {"mandate": mandate, "profile": profile}})
         chair_text = ""
         try:
             self._phase("mandate")
@@ -85,10 +88,18 @@ class Orchestrator:
                 self._say(a, f"{a}: you MUST call the cast_vote tool now with your final "
                              f"zone, stance, and rationale.")
             # Chair synthesizes from the transcript — NO tools, so it produces prose,
-            # not another round of queries that returns empty.
-            chair = self._say("chair", "chair: the votes are in. In 3-4 sentences, name the "
-                              "recommended tract, the confidence, and the key caveat/dissent. "
-                              "Do NOT call any tools — synthesize from the discussion above.",
+            # not another round of queries that returns empty. The Chair's judgment is
+            # final: it sees the tally + plurality and may OVERRULE it (acknowledging it).
+            plurality = self._recommended_zone()
+            plurality_str = f"tract {str(plurality)[-4:]}" if plurality else "no clear plurality"
+            chair = self._say("chair",
+                              f"chair: the votes are in. Tally by stance: {self._tally()}. "
+                              f"The plurality of votes favors {plurality_str}. As Chair, your "
+                              f"judgment is FINAL: you may endorse the plurality or OVERRULE it. "
+                              f"If you overrule, explicitly acknowledge the plurality and explain "
+                              f"why you decide otherwise. In 3-4 sentences, name the recommended "
+                              f"tract, the confidence, and the key caveat/dissent. Do NOT call any "
+                              f"tools — synthesize from the discussion above.",
                               tools_enabled=False)
             chair_text = (chair.get("text") or "").strip()
         finally:

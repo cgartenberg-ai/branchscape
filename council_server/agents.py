@@ -22,25 +22,48 @@ ROLE_PROMPTS = {
         "job is to ATTACK the current front-runner with real evidence — find its weakest "
         "dimension via query_data and force the council to price it in. Be sharp but fair. 2-3 sentences.",
     "chair": "You are the CHAIR of a Maricopa County bank branch-siting council. You synthesize "
-        "the council's discussion into a single recommendation, preserving any dissent. When asked "
-        "to call the vote, state the recommended tract and the confidence, and name the key caveat. "
-        "3-4 sentences.",
+        "the council's discussion into a single recommendation, preserving any dissent. Your "
+        "judgment is final: you may overrule the plurality of votes, but acknowledge it when you "
+        "do and explain why. When asked to call the vote, state the recommended tract and the "
+        "confidence, and name the key caveat. 3-4 sentences.",
 }
 
 # Default model per agent; specialists may use a faster tier in P2d. None -> client default.
 MODEL_FOR = {}
 
+def build_profile_preamble(profile):
+    """A system-prompt preamble so every agent reasons AS the presenter's specific
+    bank (name, type, asset size, region, values). Returns '' when no profile is
+    given, so the generic community-bank framing in ROLE_PROMPTS stands unchanged."""
+    if not profile:
+        return ""
+    bits = []
+    if profile.get("name"): bits.append(f"named {profile['name']}")
+    if profile.get("type"): bits.append(f"a {profile['type']} bank")
+    if profile.get("asset_size"): bits.append(f"with about {profile['asset_size']} in assets")
+    if profile.get("region"): bits.append(f"serving {profile['region']}")
+    who = ", ".join(bits) if bits else "this institution"
+    values = profile.get("values") or []
+    vline = f" Its stated priorities: {', '.join(values)}." if values else ""
+    return (f"CONTEXT — you serve a bank {who}.{vline} Reason and argue AS a member of "
+            f"THIS bank's branch-siting council; let its size, footprint, and values shape "
+            f"your priorities and tradeoffs. Still ground every data claim in query_data.")
+
 class AgentRunner:
     """Runs one agent's turn: stream thinking, resolve tool calls, return final message."""
-    def __init__(self, agent_id, dataset, client, emit, model=None):
+    def __init__(self, agent_id, dataset, client, emit, model=None, profile_preamble=""):
         self.id = agent_id
         self.ds = dataset
         self.client = client
         self.emit = emit
         self.model = model or MODEL_FOR.get(agent_id)
+        self.profile_preamble = profile_preamble or ""
 
     def run_turn(self, transcript, max_tool_rounds=3, tools_enabled=True):
-        system = ROLE_PROMPTS[self.id]
+        # The bank profile (if any) leads the system prompt so the agent reasons AS
+        # that specific bank, with its role persona right after.
+        system = (self.profile_preamble + "\n\n" + ROLE_PROMPTS[self.id]
+                  if self.profile_preamble else ROLE_PROMPTS[self.id])
         messages = list(transcript)
         # tools_enabled=False forces a prose-only turn (used for the Chair's final
         # synthesis, so it can't burn the turn on tool calls and return empty text).

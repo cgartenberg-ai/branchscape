@@ -26,6 +26,21 @@ class ParseEnvTest(unittest.TestCase):
             self.assertEqual(os.environ["COUNCIL_TEST_VAR"], "from_shell")
             os.environ.pop("COUNCIL_TEST_VAR", None)
 
+    def test_load_env_overrides_empty_or_whitespace_existing(self):
+        # An empty (or whitespace-only) existing env var must NOT shadow the real
+        # .env value — this is the demo-day blocker: a shell that exports
+        # ANTHROPIC_API_KEY="" once silently suppressed the key from .env.
+        with tempfile.TemporaryDirectory() as dd:
+            p = os.path.join(dd, ".env")
+            open(p, "w").write("COUNCIL_TEST_VAR=from_file\n")
+            os.environ["COUNCIL_TEST_VAR"] = ""           # present but empty
+            envfile.load_env(p)
+            self.assertEqual(os.environ["COUNCIL_TEST_VAR"], "from_file")
+            os.environ["COUNCIL_TEST_VAR"] = "   "         # whitespace-only
+            envfile.load_env(p)
+            self.assertEqual(os.environ["COUNCIL_TEST_VAR"], "from_file")
+            os.environ.pop("COUNCIL_TEST_VAR", None)
+
     def test_load_env_missing_file_is_noop(self):
         self.assertEqual(envfile.load_env("/no/such/.env"), {})
 

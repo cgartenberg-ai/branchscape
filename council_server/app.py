@@ -21,9 +21,22 @@ class CouncilHandler(SimpleHTTPRequestHandler):
         pass  # quiet; SSE keep-alives would spam the console
 
     def do_GET(self):
-        if self.path.split("?")[0] == "/events":
+        path = self.path.split("?")[0]
+        if path == "/events":
             return self._sse()
+        if path == "/health":
+            return self._health()
         return super().do_GET()
+
+    def _health(self):
+        # Lets the page detect a real council_server (vs a static host) and decide
+        # whether to run live agents or fall back to the Phase-1 demo.
+        body = json.dumps({"status": "ok", "mode": "live"}).encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
 
     def _sse(self):
         self.send_response(200)
@@ -50,7 +63,8 @@ class CouncilHandler(SimpleHTTPRequestHandler):
         action = body.get("action")
         if action == "start":
             mandate = body.get("mandate", "")
-            threading.Thread(target=self.runner, args=(mandate,), daemon=True).start()
+            profile = body.get("profile")  # optional bank-profile dict from the setup panel
+            threading.Thread(target=self.runner, args=(mandate, profile), daemon=True).start()
         elif action == "replay":
             import os
             from council_server.record import replay_events
