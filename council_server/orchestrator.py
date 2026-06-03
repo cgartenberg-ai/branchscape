@@ -1,5 +1,5 @@
 # branchscape/council_server/orchestrator.py
-import collections
+import collections, queue
 from council_server.agents import AgentRunner, build_profile_preamble
 
 SPECIALISTS = ["market", "risk", "community", "realestate", "devil"]
@@ -26,14 +26,35 @@ class Orchestrator:
         self.transcript = []   # shared chat all agents see
         self.votes = []
         self.profile_preamble = ""  # set per-run from the presenter's bank profile
+        self._inbox = queue.Queue()  # presenter "[THE ROOM]" messages awaiting fold-in
 
     def _runner(self, agent_id):
         return AgentRunner(agent_id, self.ds, self.client, emit=self.emit,
                            profile_preamble=self.profile_preamble)
 
+    def inject(self, text):
+        """Thread-safe (called from the HTTP handler thread): queue a presenter/room
+        message to be folded into the live deliberation at the next turn boundary."""
+        self._inbox.put(text)
+
+    def _drain_injections(self):
+        """Fold every pending room message into the shared transcript as a directive the
+        remaining agents (and the Chair) must take seriously, and surface each as a visible
+        `room_inject` event so the HUD shows the redirect entering the debate."""
+        while True:
+            try:
+                text = self._inbox.get_nowait()
+            except queue.Empty:
+                break
+            self.transcript.append({"role": "user",
+                "content": f"[THE ROOM — a directive from the audience that you MUST take "
+                           f"seriously and respond to] {text}"})
+            self.emit({"type": "room_inject", "data": {"text": text}})
+
     def _say(self, agent_id, instruction, tools_enabled=True):
         """Resilient single turn: a failure becomes a recorded error + empty result,
         so one bad turn can never abort the whole deliberation."""
+        self._drain_injections()  # fold any pending presenter "[THE ROOM]" input in first
         msgs = self.transcript + [{"role": "user", "content": instruction}]
         try:
             result = self._runner(agent_id).run_turn(msgs, tools_enabled=tools_enabled)

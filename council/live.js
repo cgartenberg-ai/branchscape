@@ -53,6 +53,8 @@
       case 'verdict': s.verdict = evt.data; s.reportPending = true; break;
       case 'error': s.lastError = { agent: evt.agent, message: (evt.data && evt.data.message) || 'error' }; break;
       case 'artifacts': s.artifacts = evt.data; s.reportPending = false; break;
+      // a presenter/room redirect folded into the live debate — record it so the HUD shows it
+      case 'room_inject': s.lastRoom = (evt.data && evt.data.text) || ''; break;
       case 'run_end': s.done = true; break;
       default: break;
     }
@@ -71,7 +73,12 @@
     };
     es.onerror = () => { if (opts && opts.onError) opts.onError(); };
     return {
-      start: (mandate, profile) => fetch('/control', { method: 'POST', body: JSON.stringify({ action: 'start', mandate, profile }) }),
+      start: (mandate, profile) => fetch('/control', { method: 'POST', body: JSON.stringify({
+        action: 'start', mandate, profile,
+        // presenter passcode (from ?key=…) — gates a public/tunneled endpoint; ignored locally
+        passcode: new URLSearchParams(location.search).get('key') || undefined }) }),
+      // presenter / "the room" steers the running deliberation
+      inject: (text) => fetch('/control', { method: 'POST', body: JSON.stringify({ action: 'inject', text }) }),
       callQuestion: () => fetch('/control', { method: 'POST', body: JSON.stringify({ action: 'call_question' }) }),
       replay: () => fetch('/control', { method: 'POST', body: JSON.stringify({ action: 'replay' }) }),
       state: () => state,
@@ -81,7 +88,16 @@
   const STANCE_REACTION = { support: 'agree', oppose: 'object', conditional: 'conditional' };
   function render(evt, state) {
     if (typeof CouncilUI === 'undefined') return;
+    // When the presenter convenes, the run streams to ALL connected viewers — clear any
+    // open setup panel (e.g. on a spectator's screen) so it doesn't cover the deliberation.
+    if (evt.type === 'run_start') {
+      var panel = document.getElementById('council-setup'); if (panel) panel.remove();
+    }
     if (evt.type === 'phase_change') CouncilUI.setPhase('LIVE · ' + state.beat.toUpperCase());
+    if (evt.type === 'room_inject' && evt.data && evt.data.text) {
+      CouncilUI.setPhase('↪ THE ROOM REDIRECTS');
+      if (typeof CouncilUI.showRoom === 'function') CouncilUI.showRoom(evt.data.text);
+    }
     if (evt.type === 'agent_thinking') CouncilUI.setActiveSpeaker(state.activeAgent, state.caption);
     if (evt.type === 'agent_message' && evt.data && (evt.data.text || '').trim())
       CouncilUI.setActiveSpeaker(evt.agent, evt.data.text);

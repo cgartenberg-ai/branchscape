@@ -72,4 +72,10 @@ test('verdict marks the decision memo as pending; artifacts clears it and stores
   assert.strictEqual(s.artifacts.report, '/runs/r-report.md');
 });
 
+test('room_inject records the presenter/room message so the HUD can show the redirect', () => {
+  let s = initialState();
+  s = applyEvent(s, { type: 'room_inject', data: { text: 'weight community access higher' } });
+  assert.strictEqual(s.lastRoom, 'weight community access higher');
+});
+
 report();

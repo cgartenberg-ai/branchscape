@@ -41,11 +41,30 @@
       const live = CouncilLive.connect({ onError: () => CouncilUI.setPhase('LIVE · connection lost') });
       window.__council = live; // presenter handle (also drives the setup panel)
       CouncilUI.setPhase('LIVE · ready');
+      // Wire the "Redirect →" bar to the LIVE deliberation so the presenter / the room can
+      // steer it mid-stream (in demo mode Director.wireControls does this; live had nothing).
+      const sendRedirect = () => {
+        const inp = document.getElementById('c-input');
+        const v = inp.value.trim();
+        if (v) { live.inject(v); inp.value = ''; inp.blur(); }
+      };
+      document.getElementById('c-send').addEventListener('click', sendRedirect);
+      document.getElementById('c-input').addEventListener('keydown', e => {
+        if (e.code === 'Enter') { e.preventDefault(); sendRedirect(); }
+      });
       // Pick a bank archetype + mandate, then "Convene the council".
       // (Console fallback still works: __council.start("<mandate>", profile).)
       CouncilSetup.mount((mandate, profile) => {
         CouncilUI.setPhase('LIVE · convening…');
-        live.start(mandate, profile);
+        live.start(mandate, profile).then(r => {
+          if (r && r.status === 403) {
+            CouncilUI.setPhase('LIVE · locked');
+            CouncilUI.setActiveSpeaker('chair', '🔒 This is a presenter-gated link. Add the passcode to the URL (…/council.html?key=PASSCODE) to convene the council.');
+          } else if (r && r.status === 429) {
+            CouncilUI.setPhase('LIVE · busy');
+            CouncilUI.setActiveSpeaker('chair', '⏳ The council is mid-deliberation for someone else. Give it a moment and convene again.');
+          }
+        }).catch(() => {});
       });
     }
     // Phase 1 deterministic, fully-local "demo" mode (the safe fallback floor).

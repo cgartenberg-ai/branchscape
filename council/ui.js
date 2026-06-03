@@ -120,6 +120,18 @@ const CouncilUI = (function () {
 
   function clearTransient() { document.querySelectorAll('.c-chip,.c-beam').forEach(e => e.remove()); }
 
+  // The presenter / room redirect, shown distinctly in the caption so the audience SEES
+  // their steer enter the live debate (the council then responds to it on the next turns).
+  function showRoom(text) {
+    const who = document.getElementById('c-who'), ln = document.getElementById('c-line');
+    if (who) { who.textContent = 'YOU / THE ROOM'; who.style.color = '#7db8ff'; }
+    if (ln) ln.textContent = '↪ ' + text;
+    for (const id in nodeEls) {            // dim all agents — the room has the floor
+      const orb = nodeEls[id].querySelector('.c-orb');
+      orb.style.opacity = '.5'; orb.style.transform = 'scale(1)';
+    }
+  }
+
   // A small "⚙ tool(...)" chip above an agent node, showing it is querying data live.
   function showToolChip(agentId, label) {
     const node = nodeEls[agentId]; if (!node) return;
@@ -157,5 +169,5 @@ const CouncilUI = (function () {
     hud.appendChild(bar);
   }
 
-  return { mount, setPhase, setActiveSpeaker, setReactions, setConfidence, showChips, attackBeam, showToolChip, showArtifacts, clearTransient };
+  return { mount, setPhase, setActiveSpeaker, setReactions, setConfidence, showChips, attackBeam, showToolChip, showArtifacts, clearTransient, showRoom };
 })();

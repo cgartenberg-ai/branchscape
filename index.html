@@ -891,7 +891,10 @@ function boot(){
   // Hand control to the user the moment they touch the map: left-drag pans,
   // right-drag / Ctrl-drag rotates & tilts, scroll zooms. Stop the cinematic
   // auto-spin on any interaction so it doesn't fight the mouse.
-  ['dragstart','wheel','mousedown','touchstart'].forEach(ev => map.on(ev, ()=>{ rotating=false; }));
+  // Only a deliberate pan / manual-rotate drag hands control to the user and
+  // stops the cinematic auto-spin. Zooming (wheel/pinch) and clicks keep it
+  // spinning — zoom must NOT kill the rotation.
+  ['dragstart','rotatestart','pitchstart'].forEach(ev => map.on(ev, ()=>{ rotating=false; }));
 
   // shrink/fade towers as you zoom past metro altitude so streets read clearly
   map.on('zoom', ()=>{

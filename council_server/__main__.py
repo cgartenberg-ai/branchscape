@@ -31,6 +31,8 @@ def make_runner(hub, dataset):
     """A full 6-agent orchestrated deliberation, streamed to the hub + recorded, then
     summarized into <stem>-transcript.md + an AI decision memo <stem>-report.md."""
     use_fake = os.environ.get("COUNCIL_FAKE") == "1"
+    active = {"orch": None}  # the currently-running Orchestrator, so a presenter redirect
+                             # (POST /control inject) can reach the live deliberation
     def runner(mandate, profile=None):
         os.makedirs(RUNS_DIR, exist_ok=True)
         stem = f"run-{int(time.time())}"
@@ -41,12 +43,15 @@ def make_runner(hub, dataset):
             rec.write(stamped)          # persist to JSONL
             events.append(stamped)      # accumulate for the artifacts
         client = _build_fake_client() if use_fake else ClaudeClient()
+        orch = Orchestrator(dataset, client, emit)
+        active["orch"] = orch
         try:
-            Orchestrator(dataset, client, emit).run(mandate, profile)
+            orch.run(mandate, profile)
         except Exception as e:
             emit({"type": "error", "data": {"message": str(e)}})
             emit({"type": "run_end", "data": {}})
         finally:
+            active["orch"] = None
             rec.close()
         # Write the transcript + AI decision memo, then tell the browser where they are.
         try:
@@ -57,6 +62,15 @@ def make_runner(hub, dataset):
             hub.publish({"type": "artifacts", "data": urls})
         except Exception as e:
             hub.publish({"type": "error", "data": {"message": f"report generation failed: {e}"}})
+    def inject(text):
+        """Forward a presenter/room redirect to the live deliberation if one is running;
+        a no-op (returns False) when the council is idle."""
+        orch = active["orch"]
+        if orch is not None:
+            orch.inject(text)
+            return True
+        return False
+    runner.inject = inject
     return runner
 
 def _check_key():

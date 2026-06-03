@@ -66,6 +66,16 @@ class _SystemCapture:
         self.systems.append(system)
         yield ("final", {"text": "ok", "tool_calls": []})
 
+class _MsgCapture:
+    """Records the FULL messages list of every turn while delegating behavior to an
+    inner client — so a test can prove a presenter's mid-run message reaches a later
+    agent's prompt."""
+    def __init__(self, inner): self.inner = inner; self.messages_seen = []
+    def stream_agent_turn(self, system, messages, tools, model=None):
+        self.messages_seen.append(list(messages))
+        yield from self.inner.stream_agent_turn(
+            system=system, messages=messages, tools=tools, model=model)
+
 class OrchestratorTest(unittest.TestCase):
     def test_profile_threads_into_every_agent_system_prompt(self):
         # The presenter's bank profile must reach EVERY agent (incl. the Chair),
@@ -137,6 +147,37 @@ class OrchestratorTest(unittest.TestCase):
         # final (chair) turn must see an EMPTY tool list.
         self.assertEqual(cap.tools_seen[-1], [], "chair synthesis turn must be tool-free")
         self.assertTrue(len(cap.tools_seen[0]) > 0, "specialist turns DO get tools")
+
+    def test_presenter_inject_reaches_the_live_deliberation(self):
+        # THE presenter/audience redirect: a message injected mid-run must (1) surface as
+        # a visible room_inject event, (2) fold into the shared transcript as a directive,
+        # and (3) actually reach a LATER agent's prompt so the council responds to it.
+        ds = Dataset(DATA_DIR)
+        cap = _MsgCapture(fake_for_full_run())
+        orch = Orchestrator(ds, cap, emit=lambda e: None)
+        events = []
+        ROOM = "weight rural community access far higher than deposit growth"
+        state = {"fired": False}
+        def emit(e):
+            events.append(e)
+            # inject exactly once, mid-run, as the 'positions' beat opens
+            if (e.get("type") == "phase_change" and e["data"]["beat"] == "positions"
+                    and not state["fired"]):
+                state["fired"] = True
+                orch.inject(ROOM)
+        orch.emit = emit
+        orch.run("Open one new branch in Maricopa")
+
+        # (1) a visible event so the HUD can show the redirect
+        self.assertTrue(any(e["type"] == "room_inject" and ROOM in e["data"]["text"]
+                            for e in events), "a room_inject event must be emitted")
+        # (2) folded into the shared transcript as a [THE ROOM] directive
+        self.assertTrue(any("[THE ROOM" in (m.get("content") or "") and ROOM in m.get("content", "")
+                            for m in orch.transcript), "room message must enter the transcript")
+        # (3) a later agent turn actually SEES it in its messages
+        seen_after = [msgs for msgs in cap.messages_seen
+                      if any("[THE ROOM" in (m.get("content") or "") for m in msgs)]
+        self.assertTrue(seen_after, "at least one agent turn after the redirect must include it")
 
 if __name__ == "__main__":
     unittest.main()
