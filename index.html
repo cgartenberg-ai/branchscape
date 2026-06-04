@@ -534,7 +534,7 @@ const map = new maplibregl.Map({
   attributionControl:false, interactive:true, antialias:true
 });
 
-let overlay, currentYearIdx = 0, rotating = false, bearing = -18;
+let overlay, currentYearIdx = 0, rotating = false, bearing = -18, dragging = false;
 
 // ---- wealth overlay (IRS avg AGI per ZIP, as a ground heat field) --------
 const INCOME = (typeof window.INCOME_DATA !== 'undefined') ? window.INCOME_DATA : [];
@@ -792,7 +792,7 @@ function startRotation(){
   if(rotating) return; rotating=true;
   (function spin(){
     if(!rotating) return;
-    bearing+=0.04; map.setBearing(bearing);
+    if(!dragging){ bearing+=0.04; map.setBearing(bearing); }  // yield to an active pan
     requestAnimationFrame(spin);
   })();
 }
@@ -894,6 +894,9 @@ function boot(){
   // Browsers PAUSE requestAnimationFrame in hidden/background tabs, freezing the
   // spin (and can keep the intro from finishing). Resume rotation when the tab
   // becomes visible again, unless the user took manual control.
+  // Yield the spin during an active drag so panning is smooth; resume on release.
+  map.on('dragstart', ()=>{ dragging=true; });
+  map.on('dragend',   ()=>{ dragging=false; });
   document.addEventListener('visibilitychange', ()=>{
     if(document.visibilityState==='visible' && !introRunning && !rotating) startRotation();
   });
